@@ -19,7 +19,9 @@ service cloud.firestore {
     function memberRef() { return /databases/$(database)/documents/members/$(email()); }
     function isMember()  { return request.auth != null && exists(memberRef()); }
     function me()        { return get(memberRef()).data; }
-    function isAdmin()   { return isMember() && me().admin == true; }
+    // .get with a default: a member document with no 'admin' field simply
+    // is not an admin, rather than erroring out mid-rule.
+    function isAdmin()   { return isMember() && me().get('admin', false) == true; }
 
     match /members/{memberEmail} {
       allow read:  if isMember();
