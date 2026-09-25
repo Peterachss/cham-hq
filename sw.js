@@ -1,6 +1,15 @@
 /* Chạm HQ service worker.
-   Bump CACHE when you change styles.css, app.js or index.html. */
-const CACHE = "cham-hq-v5";
+
+   Strategy: network first for everything that can change, falling back to
+   the cache when there is no signal. Only the icons are cache first, since
+   they never change.
+
+   This is deliberate. Cache-first on app.js and styles.css meant a phone
+   that had once loaded the page kept showing that version for good, and no
+   amount of reloading helped. Offline still works: every response is copied
+   into the cache on the way past, and the cache answers when the network
+   cannot. */
+const CACHE = "cham-hq-v6";
 const SHELL = [
   "./", "./index.html", "./styles.css", "./app.js",
   "./firebase-config.js", "./live.js", "./manifest.webmanifest",
@@ -25,30 +34,31 @@ self.addEventListener("fetch", (e) => {
 
   // Never touch Firebase. Sign-in and the live task feed must always go
   // to the network, and caching them would freeze the page on stale data.
-  if (new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
-  // Content and settings always try the network first, so a change shows up
-  // straight away instead of being frozen in the cache.
-  const path = new URL(req.url).pathname;
-  if (path.endsWith("data.json") || path.endsWith("firebase-config.js")) {
+  // Icons never change, so serve them from the cache and save the round trip.
+  if (url.pathname.includes("/icons/")) {
     e.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req))
+      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+        return res;
+      }))
     );
     return;
   }
 
-  // everything else: cache first, so it opens with no signal
+  // Everything else: try the network, keep a copy, fall back to it offline.
   e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy));
-      return res;
-    }))
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html")))
   );
 });
