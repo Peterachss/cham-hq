@@ -57,18 +57,25 @@ def main():
     if existing and WRITE:
         sys.exit("/tasks already has documents. Delete them first, or skip the import.")
 
+    # If the members were already added by hand in the console, leave them
+    # alone — the placeholders below would only be junk to clean up.
+    have_members = bool(list(db.collection("members").limit(1).stream()))
+
     people = {k: v for k, v in data["PEOPLE"].items() if k != "team"}
     tasks = data["TASKS"]
 
     print(f"{len(people)} people, {len(tasks)} tasks")
+    if have_members:
+        print("members already exist in Firestore — leaving them untouched")
     print()
 
     if not WRITE:
         print("DRY RUN. Nothing written. Add --write to do it for real.")
         print()
-        for k, p in people.items():
-            print(f"  member  {k:8} {p['name']:8} {p.get('role','')}")
-        print()
+        if not have_members:
+            for k, p in people.items():
+                print(f"  member  {k:8} {p['name']:8} {p.get('role','')}")
+            print()
         for t in tasks:
             print(f"  task    {t['who']:8} [{t['status']:7}] {t['title'][:58]}")
         return
@@ -78,10 +85,11 @@ def main():
 
     # Members are keyed by email. We do not know the emails yet, so these
     # go in as placeholders for you to rename in the Firestore console.
-    for k, p in people.items():
-        ref = db.collection("members").document(f"{k}@REPLACE-WITH-REAL-EMAIL")
-        batch.set(ref, {"personKey": k, "name": p["name"], "admin": k in ("peter", "bach")})
-        n += 1
+    if not have_members:
+        for k, p in people.items():
+            ref = db.collection("members").document(f"{k}@REPLACE-WITH-REAL-EMAIL")
+            batch.set(ref, {"personKey": k, "name": p["name"], "admin": k in ("peter", "bach")})
+            n += 1
 
     for t in tasks:
         ref = db.collection("tasks").document()
@@ -98,8 +106,9 @@ def main():
 
     batch.commit()
     print(f"wrote {n} documents")
-    print("Now open the Firestore console and rename each /members document")
-    print("to that person's real email address, all lowercase.")
+    if not have_members:
+        print("Now open the Firestore console and rename each /members document")
+        print("to that person's real email address, all lowercase.")
 
 
 if __name__ == "__main__":
