@@ -1,0 +1,20 @@
+{
+  "_README": "Copy this to %USERPROFILE%\\.cham-hq\\config.json and fill it in. Never commit the filled-in version - it holds real secrets.",
+
+  "thread_url": "https://www.instagram.com/direct/t/PUT-THE-THREAD-ID-HERE/",
+  "_thread_url": "Open the Chạm group chat on instagram.com in a browser and copy the address bar. It looks like https://www.instagram.com/direct/t/17845...",
+
+  "anthropic_api_key": "sk-ant-PUT-YOURS-HERE",
+  "_anthropic_api_key": "From console.anthropic.com -> API keys. This bills per use, separate from your Claude subscription. A nightly wrap costs a fraction of a cent.",
+
+  "firebase_key_path": "C:\\Users\\peter\\.cham-hq\\firebase-key.json",
+  "_firebase_key_path": "The service account JSON you downloaded from Firebase. Move it here so it does not sit in Downloads.",
+
+  "model": "claude-sonnet-5",
+  "tag": "Nightly wrap",
+  "scroll_passes": 8,
+  "_scroll_passes": "How far back up the thread to scroll before reading. Raise it if busy days get cut off.",
+  "headed": true,
+  "_headed": "true shows the browser window while it works. Instagram is more suspicious of hidden windows, so leave this on unless it causes trouble.",
+  "max_chars": 60000
+}
