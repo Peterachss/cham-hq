@@ -1,0 +1,611 @@
+{
+  "TODAY": "2026-09-25",
+  "PEOPLE": {
+    "bach": {
+      "name": "Bach",
+      "role": "Lead",
+      "color": "#0f6b5a",
+      "initials": "B"
+    },
+    "thuan": {
+      "name": "Thuan",
+      "role": "Finance",
+      "color": "#1d5b86",
+      "initials": "TN"
+    },
+    "peter": {
+      "name": "Peter",
+      "role": "Finance + comms",
+      "color": "#7a4bab",
+      "initials": "P"
+    },
+    "emily": {
+      "name": "Emily",
+      "role": "Marketing, social",
+      "color": "#a8452f",
+      "initials": "E"
+    },
+    "thanh": {
+      "name": "Thanh",
+      "role": "Research",
+      "color": "#2f6f3f",
+      "initials": "TH"
+    },
+    "thy": {
+      "name": "Thy",
+      "role": "Head of HR",
+      "color": "#b5397a",
+      "initials": "TY"
+    },
+    "sarah": {
+      "name": "Sarah",
+      "role": "Merch design",
+      "color": "#9d6a12",
+      "initials": "S"
+    },
+    "uyen": {
+      "name": "Uyen",
+      "role": "Proposals",
+      "color": "#3c6d8f",
+      "initials": "U"
+    },
+    "wilson": {
+      "name": "Wilson",
+      "role": "Proposals, new",
+      "color": "#546a2f",
+      "initials": "W"
+    },
+    "amy": {
+      "name": "Amy",
+      "role": "Left 20 Sep",
+      "color": "#767f7b",
+      "initials": "A"
+    },
+    "team": {
+      "name": "The group",
+      "role": "",
+      "color": "#64736d",
+      "initials": "••"
+    }
+  },
+  "DAYS": [
+    {
+      "date": "2026-09-25",
+      "tag": "Big day",
+      "items": [
+        {
+          "who": "bach",
+          "key": true,
+          "text": "Met Mr Marshall again. The bake sale can only run **by order** — no cookie booth at school. Advertising, letting people taste, and taking orders are all allowed."
+        },
+        {
+          "who": "bach",
+          "text": "Ice cream and cookie proposal is finished, but he is exploring other options in case the sale cannot run at all."
+        },
+        {
+          "who": "bach",
+          "text": "Wants to start before the break: bake, advertise in person, take online orders."
+        },
+        {
+          "who": "peter",
+          "key": true,
+          "text": "Meeting with Wilson and Bach. Long term is themed merch for Halloween and Christmas. Short term they need something that raises money fast. Ideas so far: photobooth and fake tattoos."
+        },
+        {
+          "who": "bach",
+          "text": "Backup fundraisers written down: friendship bracelets with custom names, and a raffle or lucky draw at 20k a ticket with prizes."
+        },
+        {
+          "who": "wilson",
+          "text": "Joined to help with proposals. Thuan objected that the group never all agreed. Thanh settled it: keep Wilson, and Bach should find a replacement merch designer."
+        },
+        {
+          "who": "peter",
+          "text": "Published the fundraiser plan page with the bracelet and draw numbers, content from Wilson."
+        },
+        {
+          "who": "bach",
+          "text": "Chased Sarah again: it has been 4 days, is the merch design finished? No answer in the chat."
+        },
+        {
+          "who": "thuan",
+          "text": "Asked whether the ice cream price is decided. It still is not."
+        },
+        {
+          "who": "thanh",
+          "text": "Christmas idea: let students colour gingerbread cookies with melted chocolate and pay for the one they decorated. Not a booth, so it may get past the rule."
+        },
+        {
+          "who": "peter",
+          "text": "Said he would build a calendar and task page for everyone and keep it updated, pinned in the chat. That is this page."
+        },
+        {
+          "who": "team",
+          "text": "Long back and forth about pace and who is actually doing their job. Thanh called it off and asked to move on."
+        }
+      ]
+    },
+    {
+      "date": "2026-09-24",
+      "tag": "Merch day",
+      "items": [
+        {
+          "who": "emily",
+          "text": "On the merch Canva, commenting. Asked Bach for edit access."
+        },
+        {
+          "who": "sarah",
+          "text": "Had an away game and got back at 11pm, said she would finish the design that night. No confirmation posted afterwards."
+        },
+        {
+          "who": "bach",
+          "text": "Sent Emily the Canva that Amy left behind and asked for more colours and more design variations."
+        },
+        {
+          "who": "thy",
+          "text": "Asked Sarah and Emily whether the designs can be finished by Sunday."
+        }
+      ]
+    },
+    {
+      "date": "2026-09-23",
+      "tag": "Plan changed",
+      "items": [
+        {
+          "who": "bach",
+          "key": true,
+          "text": "Met Mr Marshall. **Weekly sales are out.** It becomes a monthly themed ice cream and bake sale, then cookies by order through a form or the website, with delivery."
+        },
+        {
+          "who": "bach",
+          "text": "Monthly themes agreed with Mr Marshall: Halloween next month, then Thanksgiving, then Christmas."
+        },
+        {
+          "who": "bach",
+          "text": "Proposal goes to Mr Marshall that night, then most likely to Ms Catriona, the vice principal."
+        },
+        {
+          "who": "bach",
+          "key": true,
+          "text": "About 14 days until the break. Plan is to rush one sale in before it, then another near Halloween."
+        },
+        {
+          "who": "emily",
+          "text": "Taking over Amy's merch design, and doing the merch proposal this week. Said she would do it Thursday afternoon after her business test."
+        },
+        {
+          "who": "thuan",
+          "text": "Pushed back hard on the delay: nearly a month spent on one bake sale, and the group keeps moving things."
+        },
+        {
+          "who": "thanh",
+          "text": "On Thuan's suggestion of a work calendar: a calendar is useless if nobody checks it."
+        }
+      ]
+    },
+    {
+      "date": "2026-09-22",
+      "tag": "Pricing",
+      "items": [
+        {
+          "who": "bach",
+          "key": true,
+          "text": "Ice cream settled in conversation at **30k one scoop, 45k two**. Material cost is about 17k a scoop. Bach wanted 50k for two, Thanh said 45 reads better, Thuan agreed."
+        },
+        {
+          "who": "thuan",
+          "text": "Cookies discussed at 45k to 50k each. He floated 35-40k for the Oreo crumble flavour, Bach said that is too expensive."
+        },
+        {
+          "who": "thuan",
+          "text": "Built the price and profit comparison on the finance sheet. Going from 25k to 45k roughly doubles the profit."
+        },
+        {
+          "who": "sarah",
+          "text": "Shared a rough sketch of the merch. Thanh wants the organisation name on the front. Emily said the back is too packed and the words overlap the design. Bach wants maximum 4 colours and likes Amy's simpler look."
+        },
+        {
+          "who": "bach",
+          "text": "Asked Peter to use real photos from the orphanage visit and the bake sales on the 'what we have done' slide, not stock."
+        }
+      ]
+    },
+    {
+      "date": "2026-09-21",
+      "tag": "Roles shuffled",
+      "items": [
+        {
+          "who": "amy",
+          "key": true,
+          "text": "**Amy left Chạm.** Too much on her plate and Chạm is not her main CAS. Merch design moved to Sarah, and later to Sarah plus Emily."
+        },
+        {
+          "who": "sarah",
+          "text": "Lost the finished design to a power outage at school, the iPad had not saved it. Said she would recreate it."
+        },
+        {
+          "who": "emily",
+          "text": "Became social media manager. Bach will work with her on the Instagram posts and match the aesthetic Amy had."
+        },
+        {
+          "who": "uyen",
+          "text": "Finished the ice cream and cookie proposal. Bach then moved her onto the merch proposal to help Emily find suppliers and costs."
+        },
+        {
+          "who": "thy",
+          "text": "Started chasing people. Asked Uyen about the proposal and told Peter the slides photos are due Sunday. Said she will keep everybody on track."
+        },
+        {
+          "who": "bach",
+          "text": "Deadlines set: merch designs by Thursday or Friday, merch proposal this week."
+        }
+      ]
+    },
+    {
+      "date": "2026-09-20",
+      "tag": "Sunday reset",
+      "items": [
+        {
+          "who": "thuan",
+          "key": true,
+          "text": "**Financial report finished.** Tab 1 is the overall report and calculates itself, Tab 2 is future events and their costs, Tabs 3 and 4 are empty for now, maybe a goals board. Everyone should log material spending, it takes two minutes."
+        },
+        {
+          "who": "bach",
+          "text": "Set the two priorities: the ice cream and cookie proposal, and the merch proposal."
+        },
+        {
+          "who": "bach",
+          "text": "Put Peter in charge of logging expenses when materials get bought, since he is in Vietnam with the team. Thuan will help if needed."
+        },
+        {
+          "who": "thy",
+          "text": "Joined as Head of HR: organise the meetings and check progress on every project."
+        },
+        {
+          "who": "thanh",
+          "text": "Joined on research. Built the proposal slides with Thuan the same night. Content is done, it needs photos."
+        },
+        {
+          "who": "bach",
+          "key": true,
+          "text": "Food authorisation is the blocker. It needs a meeting with the high school principal to present the idea. Mr Marshall and Ms Catriona will help."
+        },
+        {
+          "who": "peter",
+          "text": "Set up cham_summarizer, the account that reads the chat, posts a morning plan and a nightly wrap, and answers when tagged."
+        },
+        {
+          "who": "thanh",
+          "text": "No discounts or giveaways for anyone, friends included. Thuan: if you give one, it comes out of your own pocket."
+        }
+      ]
+    },
+    {
+      "date": null,
+      "tag": "No timestamps in the export",
+      "label": "Before 20 Sep",
+      "items": [
+        {
+          "who": "bach",
+          "text": "Merch started as shirts, with the slogan 'Changing lives through compassion' on the back. Amy pushed for sports shirt material instead of cotton, hoodies came up as an option, Sarah started redesigning."
+        },
+        {
+          "who": "bach",
+          "text": "The fundraising idea: sell ice cream every Friday so people look forward to it. Sarah suggested alternating weeks, which became the ice cream and cookie rotation."
+        },
+        {
+          "who": "thuan",
+          "text": "Reconciled the 1 Aug bake sale: 750k in cash with Bach, plus Sarah's transfers of 150k from the compound and 200k from her dad's company. Whether the total is 3,350,000 was still being checked."
+        },
+        {
+          "who": "emily",
+          "text": "Asked for a Friday free period slot where most of the group is free, for meetings and for filming content. Meetings every two weeks once the proposals are done."
+        }
+      ]
+    }
+  ],
+  "TASKS": [
+    {
+      "who": "bach",
+      "title": "Get the sale approved by the school",
+      "status": "blocked",
+      "note": "Proposal to Mr Marshall, then Ms Catriona, then the principals. They need the weekend plus a few days to decide.",
+      "since": "2026-09-20"
+    },
+    {
+      "who": "bach",
+      "title": "Lock the ice cream price",
+      "status": "open",
+      "note": "30k a scoop and 45k for two came out of the chat on 22 Sep but nobody confirmed it. Thuan asked again on 25 Sep.",
+      "since": "2026-09-22"
+    },
+    {
+      "who": "bach",
+      "title": "Generate the shirt and hoodie designs",
+      "status": "doing",
+      "note": "Max 4 colours, simpler look. Sits alongside whatever Sarah and Emily produce.",
+      "since": "2026-09-25"
+    },
+    {
+      "who": "bach",
+      "title": "Find a replacement merch designer",
+      "status": "open",
+      "note": "Thanh's point on 25 Sep: Sarah and Uyen are not replying, so cover the role.",
+      "since": "2026-09-25"
+    },
+    {
+      "who": "bach",
+      "title": "Check the net profit figure on Tab 1",
+      "status": "open",
+      "note": "Thuan asked for this when he handed over the report on 20 Sep.",
+      "since": "2026-09-20"
+    },
+    {
+      "who": "bach",
+      "title": "Start cookie orders before the break",
+      "status": "open",
+      "note": "Bake, advertise in person, take orders online. By order only, no booth.",
+      "due": "2026-10-02"
+    },
+    {
+      "who": "bach",
+      "title": "Instagram posts with Emily",
+      "status": "doing",
+      "note": "Using Amy's old posts as the reference for the look."
+    },
+    {
+      "who": "thuan",
+      "title": "Overall financial report and Tab 1",
+      "status": "done",
+      "note": "Auto calculating. Finished 20 Sep."
+    },
+    {
+      "who": "thuan",
+      "title": "Cost and production slide",
+      "status": "done",
+      "note": "Added to the proposal deck on 20 Sep."
+    },
+    {
+      "who": "thuan",
+      "title": "Price options and profit comparison tab",
+      "status": "done",
+      "note": "Finished 22 Sep. 45k roughly doubles profit against 25k."
+    },
+    {
+      "who": "thuan",
+      "title": "Log the sale prices into the plans tab",
+      "status": "open",
+      "note": "Then move the real numbers into the overall tab once the sale actually happens."
+    },
+    {
+      "who": "peter",
+      "title": "Real activity photos on the 'what we have done' slide",
+      "status": "doing",
+      "note": "Orphanage and bake sale photos, not stock. Thy's deadline was Sunday.",
+      "due": "2026-09-27"
+    },
+    {
+      "who": "peter",
+      "title": "Log every material purchase in the finance sheet",
+      "status": "doing",
+      "note": "Standing job since 20 Sep, because he is in Vietnam when things get bought."
+    },
+    {
+      "who": "peter",
+      "title": "Fundraiser plan page: bracelets and the draw",
+      "status": "done",
+      "note": "Published 25 Sep, content from Wilson."
+    },
+    {
+      "who": "peter",
+      "title": "This calendar and task page, kept updated",
+      "status": "doing",
+      "note": "Promised in the chat on 25 Sep, pinned so nobody has to scroll."
+    },
+    {
+      "who": "peter",
+      "title": "cham_summarizer bot",
+      "status": "done",
+      "note": "Morning plan, nightly wrap, answers when tagged."
+    },
+    {
+      "who": "emily",
+      "title": "Merch proposal: suppliers and costs",
+      "status": "open",
+      "note": "Hoodies and shirts, somewhere affordable. Due this week, with Uyen helping.",
+      "due": "2026-09-27"
+    },
+    {
+      "who": "emily",
+      "title": "Take over Amy's Canva merch design",
+      "status": "blocked",
+      "note": "More colours and more variations. Still waiting on edit access to the Canva.",
+      "since": "2026-09-24"
+    },
+    {
+      "who": "emily",
+      "title": "Instagram posts with Bach",
+      "status": "doing",
+      "note": "Match the aesthetic Amy had on the account."
+    },
+    {
+      "who": "emily",
+      "title": "Collect content ideas to film",
+      "status": "open",
+      "note": "From TikTok and other schools, for the Friday free period."
+    },
+    {
+      "who": "sarah",
+      "title": "Finish the merch design",
+      "status": "late",
+      "note": "Add colour, move things off the back, organisation name on the front. Promised for the night of 24 Sep. Bach asked again on 25 Sep after 4 days, no reply.",
+      "due": "2026-09-24"
+    },
+    {
+      "who": "uyen",
+      "title": "Ice cream and cookie proposal",
+      "status": "done",
+      "note": "Finished 21 Sep. Thy: ten chickens for you."
+    },
+    {
+      "who": "uyen",
+      "title": "Help Emily on the merch proposal",
+      "status": "open",
+      "note": "Suppliers and cost options. Not replying in the chat since."
+    },
+    {
+      "who": "thanh",
+      "title": "Proposal slides: history, impact, goal, marketing, costs",
+      "status": "done",
+      "note": "Content finished with Thuan. Only photos were missing."
+    },
+    {
+      "who": "thanh",
+      "title": "Gingerbread decorating idea for Christmas",
+      "status": "open",
+      "note": "Students colour the cookie and pay for it. Needs writing up as a proposal.",
+      "since": "2026-09-25"
+    },
+    {
+      "who": "thy",
+      "title": "Organise the meetings",
+      "status": "open",
+      "note": "Friday free period, every two weeks once the proposals are done."
+    },
+    {
+      "who": "thy",
+      "title": "Track everyone's deadlines",
+      "status": "doing",
+      "note": "Merch proposal this week, merch designs by Sunday, slides photos by Sunday."
+    },
+    {
+      "who": "wilson",
+      "title": "Bracelet and raffle fundraiser plan",
+      "status": "done",
+      "note": "Numbers and plan done, Peter turned it into the page."
+    },
+    {
+      "who": "wilson",
+      "title": "More proposals with Bach",
+      "status": "open",
+      "note": "The reason he was brought in."
+    }
+  ],
+  "EVENTS": [
+    {
+      "date": "2026-08-01",
+      "title": "Second bake sale",
+      "sub": "The one Thuan reconciled: 750k cash plus 350k in transfers",
+      "state": "past"
+    },
+    {
+      "date": "2026-09-20",
+      "title": "Financial report done, Thy and Thanh join",
+      "sub": "Sheet handed over, roles set, bot switched on",
+      "state": "past"
+    },
+    {
+      "date": "2026-09-23",
+      "title": "Bach meets Mr Marshall",
+      "sub": "Weekly sale becomes monthly, cookies by order",
+      "state": "past"
+    },
+    {
+      "date": "2026-09-25",
+      "title": "Fundraising meeting: Peter, Wilson, Bach",
+      "sub": "Photobooth, fake tattoos, bracelets, raffle. Wilson joins",
+      "state": "past"
+    },
+    {
+      "date": "2026-09-27",
+      "title": "Thy's deadline: merch designs and slide photos",
+      "sub": "Set for Sarah, Emily and Peter",
+      "state": "target"
+    },
+    {
+      "date": "2026-10-02",
+      "title": "Target: one sale before the break",
+      "sub": "The Friday before the break, if the school clears it in time",
+      "state": "target"
+    },
+    {
+      "date": "2026-10-07",
+      "title": "Break starts, roughly",
+      "sub": "From Bach's '14 days before the break' on 23 Sep. Nobody posted the real date",
+      "state": "target"
+    },
+    {
+      "date": "2026-10-30",
+      "title": "Halloween sale",
+      "sub": "First themed monthly sale. Date never confirmed in the chat",
+      "state": "target"
+    }
+  ],
+  "UNDATED": [
+    {
+      "title": "Meeting with Ms Catriona and the principals",
+      "sub": "Bach is waiting on Mr Marshall to pass the proposal up"
+    },
+    {
+      "title": "First cookie order run",
+      "sub": "By order only. Needs the price locked and a form or website page"
+    },
+    {
+      "title": "Team meeting, Friday free period",
+      "sub": "Emily's idea, every two weeks after the proposals. Thy owns it"
+    },
+    {
+      "title": "Thanksgiving and Christmas sales",
+      "sub": "Two to three themed events next month onward"
+    }
+  ],
+  "MONEY": [
+    {
+      "fig": "≈5,000,000đ",
+      "lbl": "On hand, as Thuan put it on 22 Sep"
+    },
+    {
+      "fig": "≈3,500,000đ",
+      "lbl": "Average summer bake sale, donations included"
+    },
+    {
+      "fig": "17,000đ",
+      "lbl": "Material cost per scoop of ice cream"
+    },
+    {
+      "fig": "30k / 45k",
+      "lbl": "Ice cream, one scoop and two. Proposed, not locked"
+    },
+    {
+      "fig": "45–50k",
+      "lbl": "Cookies each, discussed range"
+    },
+    {
+      "fig": "20,000đ",
+      "lbl": "Raffle ticket, Wilson's plan"
+    }
+  ],
+  "LINKS": [
+    {
+      "label": "Planning doc",
+      "url": "https://docs.google.com/document/d/1YOueFkLSyGzFeZAXPN6ynQo3sqiy-7OxaWzgnT6xs0A/edit"
+    },
+    {
+      "label": "Finance sheet",
+      "url": "https://docs.google.com/spreadsheets/d/1Ly4peYB07425kfvsy9yFMqFxoGE-jdc7YHqgoVhlHnc/edit"
+    },
+    {
+      "label": "Ice cream & cookies deck",
+      "url": "https://docs.google.com/presentation/d/1_t877X3wMTQbZaWxcO_FFO0MWvyOaytV3fB9nd7dPNk/edit"
+    },
+    {
+      "label": "Fundraiser plan",
+      "url": "https://peterachss.github.io/cham-bracelet-plan/"
+    },
+    {
+      "label": "chamdreams.org",
+      "url": "https://chamdreams.org"
+    }
+  ]
+}
