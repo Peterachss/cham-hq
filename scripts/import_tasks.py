@@ -25,10 +25,25 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITE = "--write" in sys.argv
 
 
+def key_path():
+    """Read the key from a file path, so the secret never goes on a command line."""
+    if "--key" in sys.argv:
+        i = sys.argv.index("--key")
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return None
+
+
 def main():
-    raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "").strip()
+    path = key_path()
+    if path:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    else:
+        raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "").strip()
     if not raw:
-        sys.exit("Set FIREBASE_SERVICE_ACCOUNT to the service account JSON first.")
+        sys.exit("Pass --key <path to the service account json>, "
+                 "or set FIREBASE_SERVICE_ACCOUNT.")
     info = json.loads(raw)
     db = firestore.Client(
         project=info["project_id"],
