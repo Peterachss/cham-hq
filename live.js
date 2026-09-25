@@ -149,8 +149,10 @@ if (!CONFIGURED) {
 
     if (!member) {
       await signOut(auth);
+      const looked = user.email.toLowerCase();
       showSignedOut(lookupFailed
-        ? "Signed in, but the database is not set up yet (" + (lookupFailed.code || "error") + ")."
+        ? "Signed in as " + looked + ", but could not read members/" + looked
+          + " (" + (lookupFailed.code || "error") + "). The document ID must be exactly that."
         : "That account is not on the Chạm list yet. Ask Peter or Bach to add it.");
       return;
     }
