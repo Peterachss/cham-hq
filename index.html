@@ -32,6 +32,7 @@
       <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="true" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
+      <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
     </nav>
   </div>
 </header>
@@ -89,6 +90,14 @@
     <div class="filters" id="task-filters"></div>
     <div class="filters" id="status-filters"></div>
     <div id="board"></div>
+  </section>
+
+  <section id="view-tracker" role="tabpanel" aria-labelledby="tab-tracker" tabindex="0" hidden>
+    <h2 class="sec">How everyone is doing</h2>
+    <p class="hint">Everything finished, everything still open, and how far past its date. Everyone signed in sees the same numbers. Jobs with no due date can never be late, so they only count towards the open total.</p>
+    <div class="teamline" id="team-line"></div>
+    <div class="filters" id="track-sort"></div>
+    <div id="tracker"></div>
   </section>
 
   <footer class="foot">

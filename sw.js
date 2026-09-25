@@ -1,6 +1,6 @@
 /* Chạm HQ service worker.
    Bump CACHE when you change styles.css, app.js or index.html. */
-const CACHE = "cham-hq-v3";
+const CACHE = "cham-hq-v4";
 const SHELL = [
   "./", "./index.html", "./styles.css", "./app.js",
   "./firebase-config.js", "./live.js", "./manifest.webmanifest",

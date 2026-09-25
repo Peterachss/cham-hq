@@ -126,17 +126,19 @@
     person: "all",
     status: "live",           // live = everything except done
     updPerson: "all",
+    trackSort: "behind",
     month: (() => { const d = fromIso(TODAY); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
     selected: TODAY
   };
 
-  const VIEWS = ["updates","calendar","tasks"];
+  const VIEWS = ["updates","calendar","tasks","tracker"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
       const i = VIEWS.indexOf(btn.dataset.view);
-      if (e.key === "ArrowRight") { e.preventDefault(); setView(VIEWS[(i+1)%3]); $("tab-"+VIEWS[(i+1)%3]).focus(); }
-      if (e.key === "ArrowLeft")  { e.preventDefault(); setView(VIEWS[(i+2)%3]); $("tab-"+VIEWS[(i+2)%3]).focus(); }
+      const N = VIEWS.length;
+      if (e.key === "ArrowRight") { e.preventDefault(); setView(VIEWS[(i+1)%N]); $("tab-"+VIEWS[(i+1)%N]).focus(); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); setView(VIEWS[(i+N-1)%N]); $("tab-"+VIEWS[(i+N-1)%N]).focus(); }
     });
   });
   function setView(v) {
@@ -156,6 +158,7 @@
     if (S.view === "updates") renderFeed();
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
+    if (S.view === "tracker") renderTracker();
     renderAdmin();
   }
 
@@ -180,6 +183,7 @@
     $("n-updates").textContent = DAYS.length;
     $("n-calendar").textContent = EVENTS.filter((e) => e.date >= TODAY && e.state !== "past").length + UNDATED.length;
     $("n-tasks").textContent = liveTasks().length;
+    $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
 
     $("stamp").textContent = "Chat read to Fri 25 Sep 2026";
   }
@@ -473,6 +477,107 @@
       el("h3", { class: "grp", text: "Hand out a job" }),
       el("div", { class: "adrow" }, [who, title, due, note, go, msg])
     );
+  }
+
+  /* ------------------------------------------------------------------ *
+   * tracker — what everyone has finished, and how far behind they are.
+   * Same numbers for everyone; it reads the same task list the board does.
+   * ------------------------------------------------------------------ */
+  function statsFor(key) {
+    const mine = TASKS.filter((t) => t.who === key);
+    const done = mine.filter((t) => t.status === "done");
+    const open = mine.filter((t) => t.status !== "done");
+    const overdue = open.filter((t) => t.due && t.due < TODAY);
+
+    // how far past its date the worst one is, and everything added up
+    let daysLate = 0, worst = 0;
+    overdue.forEach((t) => {
+      const n = days(t.due, TODAY) || 0;
+      daysLate += n;
+      if (n > worst) worst = n;
+    });
+
+    // jobs finished after their due date, where we know when they were ticked
+    const lateDone = done.filter((t) => t.due && t.doneOn && t.doneOn > t.due).length;
+
+    return {
+      key, total: mine.length,
+      done: done.length, open: open.length,
+      overdue: overdue.length, daysLate, worst, lateDone,
+      pct: mine.length ? Math.round((done.length / mine.length) * 100) : 0
+    };
+  }
+
+  function renderTracker() {
+    const sbox = $("track-sort");
+    if (!sbox.childElementCount) {
+      [["behind","Furthest behind"],["done","Most finished"],["name","By name"]].forEach(([k, label]) => {
+        sbox.appendChild(el("button", {
+          class: "chipbtn plain", "aria-pressed": String(S.trackSort === k), "data-k": k,
+          text: label,
+          onclick: () => { S.trackSort = k; syncPressed(sbox, k); renderTracker(); }
+        }));
+      });
+    }
+
+    const keys = [...new Set(TASKS.map((t) => t.who))].filter((k) => PEOPLE[k]);
+    const rows = keys.map(statsFor);
+
+    /* the one-line team summary */
+    const tot = rows.reduce((a, r) => ({
+      done: a.done + r.done, open: a.open + r.open,
+      overdue: a.overdue + r.overdue, daysLate: a.daysLate + r.daysLate
+    }), { done: 0, open: 0, overdue: 0, daysLate: 0 });
+
+    const line = $("team-line");
+    line.replaceChildren(
+      el("div", {}, [el("span", { class: "tl-n", text: String(tot.done) }), el("span", { class: "tl-k", text: "finished" })]),
+      el("div", {}, [el("span", { class: "tl-n", text: String(tot.open) }), el("span", { class: "tl-k", text: "still open" })]),
+      el("div", {}, [el("span", { class: "tl-n" + (tot.overdue ? " bad" : ""), text: String(tot.overdue) }), el("span", { class: "tl-k", text: "past its date" })]),
+      el("div", {}, [el("span", { class: "tl-n" + (tot.daysLate ? " bad" : ""), text: String(tot.daysLate) }), el("span", { class: "tl-k", text: "days late, all told" })])
+    );
+
+    if (S.trackSort === "done")      rows.sort((a,b) => b.done - a.done || b.pct - a.pct);
+    else if (S.trackSort === "name") rows.sort((a,b) => PEOPLE[a.key].name.localeCompare(PEOPLE[b.key].name));
+    else rows.sort((a,b) => b.daysLate - a.daysLate || b.overdue - a.overdue || b.open - a.open);
+
+    const box = $("tracker");
+    box.replaceChildren();
+
+    rows.forEach((r) => {
+      const p = PEOPLE[r.key];
+
+      const bar = el("div", { class: "tbar", title: r.done + " of " + r.total + " finished" }, [
+        el("i", { style: "width:" + r.pct + "%" })
+      ]);
+
+      const nums = el("div", { class: "tnums" }, [
+        el("span", { class: "tn" }, [el("b", { text: String(r.done) }), document.createTextNode(" done")]),
+        el("span", { class: "tn" }, [el("b", { text: String(r.open) }), document.createTextNode(" open")]),
+        r.overdue
+          ? el("span", { class: "tn bad" }, [el("b", { text: String(r.overdue) }), document.createTextNode(" overdue")])
+          : el("span", { class: "tn good", text: "nothing overdue" }),
+        r.daysLate
+          ? el("span", { class: "tn bad" }, [el("b", { text: String(r.daysLate) }),
+              document.createTextNode(" day" + (r.daysLate === 1 ? "" : "s") + " late" + (r.worst > 0 ? " · worst " + r.worst : ""))])
+          : null
+      ]);
+
+      box.appendChild(el("article", { class: "card trow" + (r.overdue ? " s-late" : "") }, [
+        el("div", { class: "body" }, [
+          el("div", { class: "thead" }, [
+            avatar(r.key, true),
+            el("span", { class: "tname", text: p.name }),
+            p.role ? el("span", { class: "trole", text: p.role }) : null,
+            el("span", { class: "tpct", text: r.pct + "%" })
+          ]),
+          bar,
+          nums
+        ])
+      ]));
+    });
+
+    if (!rows.length) box.appendChild(el("div", { class: "empty-state", text: "No jobs to count yet." }));
   }
 
   /* ----- footer ----- */

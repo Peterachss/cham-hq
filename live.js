@@ -180,7 +180,12 @@ if (!CONFIGURED) {
             note: t.note || "",
             status: t.status || "open",
             due: t.due || null,
-            since: t.since || null
+            since: t.since || null,
+            // when it was ticked off, as YYYY-MM-DD, so the tracker can tell
+            // whether it landed before or after its due date
+            doneOn: t.doneAt && t.doneAt.toDate
+              ? t.doneAt.toDate().toISOString().slice(0, 10)
+              : null
           });
         });
         window.ChamHQ.setTasks(rows);
