@@ -1,6 +1,6 @@
 /* Chạm HQ service worker.
    Bump CACHE when you change styles.css, app.js or index.html. */
-const CACHE = "cham-hq-v2";
+const CACHE = "cham-hq-v3";
 const SHELL = [
   "./", "./index.html", "./styles.css", "./app.js",
   "./firebase-config.js", "./live.js", "./manifest.webmanifest",
@@ -27,8 +27,10 @@ self.addEventListener("fetch", (e) => {
   // to the network, and caching them would freeze the page on stale data.
   if (new URL(req.url).origin !== self.location.origin) return;
 
-  // the content always tries the network first, so updates show up straight away
-  if (new URL(req.url).pathname.endsWith("data.json")) {
+  // Content and settings always try the network first, so a change shows up
+  // straight away instead of being frozen in the cache.
+  const path = new URL(req.url).pathname;
+  if (path.endsWith("data.json") || path.endsWith("firebase-config.js")) {
     e.respondWith(
       fetch(req)
         .then((res) => {
