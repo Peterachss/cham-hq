@@ -80,6 +80,36 @@
     return p;
   }
 
+  /* ------------------------------------------------------------------ *
+   * bridge to live.js (sign-in + Firestore). If live.js is not wired up
+   * or nobody is signed in, TASKS stays exactly as data.json had it.
+   * ------------------------------------------------------------------ */
+  const BASE_TASKS = TASKS;
+  let SESSION = null;
+
+  window.ChamHQ = {
+    setTasks(rows) {
+      TASKS = Array.isArray(rows) ? rows : BASE_TASKS;
+      $("task-filters").replaceChildren();
+      $("status-filters").replaceChildren();
+      render();
+    },
+    setSession(s) {
+      SESSION = s;
+      $("task-filters").replaceChildren();
+      $("status-filters").replaceChildren();
+      render();
+    },
+    personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
+    personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
+  };
+
+  /** can the signed-in person move this particular job? */
+  function canEdit(t) {
+    if (!SESSION || !window.ChamLive || !t.id) return false;
+    return SESSION.admin || SESSION.personKey === t.who;
+  }
+
   const STATUS = {
     open:    { label: "open" },
     doing:   { label: "in progress" },
@@ -126,6 +156,7 @@
     if (S.view === "updates") renderFeed();
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
+    renderAdmin();
   }
 
   function liveTasks() { return TASKS.filter((t) => t.status !== "done"); }
@@ -330,18 +361,118 @@
         ]);
         if (t.due) meta.appendChild(el("span", { class: "pill due", text: (late ? "was due " : "due ") + pretty(t.due) }));
         if (!t.due && t.since) meta.appendChild(el("span", { class: "pill due", text: "since " + pretty(t.since) }));
-        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status) }, [
-          el("div", { class: "body" }, [
-            el("div", { class: "tt", text: t.title }),
-            t.note ? el("div", { class: "note", text: t.note }) : null,
-            meta
-          ])
-        ]));
+        const body = el("div", { class: "body" }, [
+          el("div", { class: "tt", text: t.title }),
+          t.note ? el("div", { class: "note", text: t.note }) : null,
+          meta
+        ]);
+        if (canEdit(t)) body.appendChild(taskActions(t));
+        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status) }, [body]));
       });
       board.appendChild(list);
     });
 
     if (!any) board.appendChild(el("div", { class: "empty-state", text: "Nothing here with that filter." }));
+  }
+
+  /* ------------------------------------------------------------------ *
+   * moving a job along — only shown to the person it belongs to, or to
+   * an admin. Everything here goes straight to Firestore.
+   * ------------------------------------------------------------------ */
+  const MOVES = [["open","Not started"],["doing","Doing it"],["blocked","Stuck"],["done","Done"]];
+
+  function taskActions(t) {
+    const row = el("div", { class: "acts" });
+
+    MOVES.forEach(([k, label]) => {
+      row.appendChild(el("button", {
+        class: "act" + (t.status === k ? " on" : ""),
+        "aria-pressed": String(t.status === k),
+        text: label,
+        onclick: async (e) => {
+          const b = e.currentTarget;
+          if (t.status === k) return;
+          b.disabled = true;
+          try { await window.ChamLive.setStatus(t.id, k); }
+          catch (err) { b.disabled = false; flash(row, "Did not save. " + (err.code || err.message)); }
+        }
+      }));
+    });
+
+    row.appendChild(el("button", {
+      class: "act ghost", text: t.note ? "Edit note" : "Add note",
+      onclick: async () => {
+        const next = window.prompt("Note for “" + t.title + "”", t.note || "");
+        if (next === null) return;
+        try { await window.ChamLive.setNote(t.id, next.trim()); }
+        catch (err) { flash(row, "Did not save. " + (err.code || err.message)); }
+      }
+    }));
+
+    if (SESSION && SESSION.admin) {
+      row.appendChild(el("button", {
+        class: "act ghost danger", text: "Delete",
+        onclick: async () => {
+          if (!window.confirm("Delete “" + t.title + "” for good?")) return;
+          try { await window.ChamLive.deleteTask(t.id); }
+          catch (err) { flash(row, "Did not delete. " + (err.code || err.message)); }
+        }
+      }));
+    }
+    return row;
+  }
+
+  function flash(node, msg) {
+    const old = node.querySelector(".act-err");
+    if (old) old.remove();
+    node.appendChild(el("span", { class: "act-err", text: msg }));
+  }
+
+  /* ------------------------------------------------------------------ *
+   * admin panel — Peter and Bach hand out the work here
+   * ------------------------------------------------------------------ */
+  function renderAdmin() {
+    const box = $("admin-panel");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && window.ChamLive);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (box.childElementCount) return;
+
+    const who = el("select", { class: "ad-in", "aria-label": "Who it is for" });
+    Object.keys(PEOPLE)
+      .filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || ""))
+      .forEach((k) => who.appendChild(el("option", { value: k, text: PEOPLE[k].name })));
+
+    const title = el("input", { class: "ad-in wide", type: "text", placeholder: "What needs doing", "aria-label": "Task" });
+    const due   = el("input", { class: "ad-in", type: "date", "aria-label": "Due date" });
+    const note  = el("input", { class: "ad-in wide", type: "text", placeholder: "Note (optional)", "aria-label": "Note" });
+    const msg   = el("span", { class: "ad-msg" });
+
+    const go = el("button", { class: "au-go", text: "Give out this job",
+      onclick: async () => {
+        msg.classList.remove("bad");
+        if (!title.value.trim()) { msg.textContent = "It needs a title."; msg.classList.add("bad"); return; }
+        go.disabled = true; go.textContent = "Saving…";
+        try {
+          await window.ChamLive.addTask({
+            who: who.value, title: title.value.trim(),
+            note: note.value.trim(), due: due.value || null
+          });
+          title.value = ""; note.value = ""; due.value = "";
+          msg.textContent = "Added. They will get it in tomorrow morning's email.";
+        } catch (err) {
+          msg.textContent = "Did not save. " + (err.code || err.message);
+          msg.classList.add("bad");
+        }
+        go.disabled = false; go.textContent = "Give out this job";
+      }
+    });
+
+    box.append(
+      el("h3", { class: "grp", text: "Hand out a job" }),
+      el("div", { class: "adrow" }, [who, title, due, note, go, msg])
+    );
   }
 
   /* ----- footer ----- */

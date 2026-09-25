@@ -1,8 +1,9 @@
 /* Chạm HQ service worker.
    Bump CACHE when you change styles.css, app.js or index.html. */
-const CACHE = "cham-hq-v1";
+const CACHE = "cham-hq-v2";
 const SHELL = [
-  "./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css", "./app.js",
+  "./firebase-config.js", "./live.js", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png"
 ];
 
@@ -21,6 +22,10 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
+
+  // Never touch Firebase. Sign-in and the live task feed must always go
+  // to the network, and caching them would freeze the page on stale data.
+  if (new URL(req.url).origin !== self.location.origin) return;
 
   // the content always tries the network first, so updates show up straight away
   if (new URL(req.url).pathname.endsWith("data.json")) {

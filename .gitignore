@@ -1,0 +1,6 @@
+# Service account keys. These are real secrets — they must never be committed.
+*serviceaccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
+firebase-key.json
+.env

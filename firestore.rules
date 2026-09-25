@@ -1,0 +1,46 @@
+rules_version = '2';
+
+/* ------------------------------------------------------------------ *
+ * Chạm HQ security rules.
+ *
+ * The short version:
+ *   - Only people listed in /members can read anything at all.
+ *   - Only admins (Peter, Bach) can create, delete or reassign a task.
+ *   - A member can change the status and note of THEIR OWN tasks only,
+ *     and cannot touch the title, the due date or who it belongs to.
+ *
+ * Members are keyed by lowercase email, so an admin can add somebody
+ * before that person has ever signed in.
+ * ------------------------------------------------------------------ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function email()     { return request.auth.token.email.lower(); }
+    function memberRef() { return /databases/$(database)/documents/members/$(email()); }
+    function isMember()  { return request.auth != null && exists(memberRef()); }
+    function me()        { return get(memberRef()).data; }
+    function isAdmin()   { return isMember() && me().admin == true; }
+
+    match /members/{memberEmail} {
+      allow read:  if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read:            if isMember();
+      allow create, delete:  if isAdmin();
+
+      allow update: if isAdmin()
+        || (
+             isMember()
+             // it must be your own task, and it must stay yours
+             && resource.data.who == me().personKey
+             && request.resource.data.who == resource.data.who
+             // you may only move these fields, nothing else
+             && request.resource.data.diff(resource.data)
+                  .affectedKeys().hasOnly(['status', 'note', 'doneAt', 'updatedAt'])
+             && request.resource.data.status in ['open', 'doing', 'blocked', 'done']
+           );
+    }
+  }
+}

@@ -27,6 +27,7 @@
       </div>
       <span class="stamp" id="stamp"></span>
     </div>
+    <div class="authbar" id="authbar" hidden></div>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="true" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
@@ -83,6 +84,7 @@
 
   <section id="view-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0" hidden>
     <h2 class="sec">Who is doing what</h2>
+    <div id="admin-panel" class="admin" hidden></div>
     <p class="hint">Every job someone was given or took on in the chat, and where it stands as of Fri 25 Sep. Tap a name to see only theirs.</p>
     <div class="filters" id="task-filters"></div>
     <div class="filters" id="status-filters"></div>
@@ -110,6 +112,8 @@
   </div>
 </div>
 
+<script src="firebase-config.js"></script>
 <script src="app.js"></script>
+<script type="module" src="live.js"></script>
 </body>
 </html>
