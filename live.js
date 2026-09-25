@@ -138,17 +138,20 @@ if (!CONFIGURED) {
     }
 
     // Who is this, in Chạm terms?
-    let member = null;
+    let member = null, lookupFailed = null;
     try {
       const snap = await getDoc(doc(db, "members", user.email.toLowerCase()));
       if (snap.exists()) member = snap.data();
     } catch (err) {
+      lookupFailed = err;
       console.error("Chạm HQ: could not read your member record", err);
     }
 
     if (!member) {
       await signOut(auth);
-      showSignedOut("That account is not on the Chạm list yet. Ask Peter or Bach to add it.");
+      showSignedOut(lookupFailed
+        ? "Signed in, but the database is not set up yet (" + (lookupFailed.code || "error") + ")."
+        : "That account is not on the Chạm list yet. Ask Peter or Bach to add it.");
       return;
     }
 

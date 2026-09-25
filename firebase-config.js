@@ -10,10 +10,10 @@
  * code; what actually protects the data is firestore.rules.
  * ------------------------------------------------------------------ */
 window.CHAM_FIREBASE = {
-  apiKey:            "",
-  authDomain:        "",
-  projectId:         "",
-  storageBucket:     "",
-  messagingSenderId: "",
-  appId:             ""
+  apiKey:            "AIzaSyA3yfNRZTGzfDX1kUgtVl5N0fm76bdF-tw",
+  authDomain:        "cham-hq.firebaseapp.com",
+  projectId:         "cham-hq",
+  storageBucket:     "cham-hq.firebasestorage.app",
+  messagingSenderId: "120151131910",
+  appId:             "1:120151131910:web:aeaf5e151b85bd8a654087"
 };
