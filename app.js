@@ -17,6 +17,14 @@
     return;
   }
 
+  /* TODAY used to be typed into data.json by hand, which meant that the
+     moment somebody forgot, every "overdue" and "3 days ago" on the page
+     quietly went wrong. Now the page just asks the device what day it is.
+     The date in data.json is kept for one job only: stamping how far the
+     chat was read. */
+  const CHAT_READ = TODAY;
+  TODAY = isoDay(new Date());
+
   /* ------------------------------------------------------------------ *
    * helpers
    * ------------------------------------------------------------------ */
@@ -185,7 +193,8 @@
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
 
-    $("stamp").textContent = "Chat read to Fri 25 Sep 2026";
+    const cr = fromIso(CHAT_READ);
+    $("stamp").textContent = cr ? "Chat read to " + pretty(CHAT_READ) + " " + cr.getFullYear() : "";
   }
 
   /* ----- updates ----- */
