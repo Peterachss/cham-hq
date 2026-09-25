@@ -28,6 +28,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // The day-by-day feed. Everyone reads it; only Peter and Bach write it.
+    match /updates/{updateId} {
+      allow read:  if isMember();
+      allow write: if isAdmin();
+    }
+
     match /tasks/{taskId} {
       allow read:            if isMember();
       allow create, delete:  if isAdmin();

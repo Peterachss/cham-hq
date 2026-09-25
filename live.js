@@ -60,7 +60,7 @@ if (!CONFIGURED) {
     return n;
   };
 
-  let unsubTasks = null;
+  let unsubTasks = null, unsubUpdates = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -129,10 +129,12 @@ if (!CONFIGURED) {
   /* ----- auth state ------------------------------------------------ */
   onAuthStateChanged(auth, async (user) => {
     if (unsubTasks) { unsubTasks(); unsubTasks = null; }
+    if (unsubUpdates) { unsubUpdates(); unsubUpdates = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
       window.ChamHQ.setTasks(null);       // fall back to data.json
+      window.ChamHQ.setUpdates(null);
       showSignedOut();
       return;
     }
@@ -194,6 +196,30 @@ if (!CONFIGURED) {
         console.error("Chạm HQ: lost the task feed", err);
         window.ChamHQ.setTasks(null);
       });
+
+    // Live entries in the day-by-day feed. These sit on top of whatever is
+    // already in data.json rather than replacing it, so the chat history
+    // written before any of this existed stays put.
+    unsubUpdates = onSnapshot(collection(db, "updates"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const u = d.data();
+          rows.push({
+            id: d.id,
+            date: u.date || null,
+            who: u.who || "team",
+            text: u.text || "",
+            key: u.key === true,
+            tag: u.tag || null
+          });
+        });
+        window.ChamHQ.setUpdates(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the updates feed", err);
+        window.ChamHQ.setUpdates(null);
+      });
   });
 
   /* ----- what app.js is allowed to call ---------------------------- */
@@ -215,7 +241,19 @@ if (!CONFIGURED) {
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
     },
-    async deleteTask(id) { await deleteDoc(doc(db, "tasks", id)); }
+    async deleteTask(id) { await deleteDoc(doc(db, "tasks", id)); },
+
+    async addUpdates(list) {
+      const who = auth.currentUser ? auth.currentUser.email.toLowerCase() : null;
+      for (const u of list) {
+        await addDoc(collection(db, "updates"), {
+          date: u.date, who: u.who, text: u.text,
+          key: u.key === true, tag: u.tag || null,
+          createdBy: who, createdAt: serverTimestamp()
+        });
+      }
+    },
+    async deleteUpdate(id) { await deleteDoc(doc(db, "updates", id)); }
   };
 
   showSignedOut();

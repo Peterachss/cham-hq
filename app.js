@@ -93,7 +93,32 @@
    * or nobody is signed in, TASKS stays exactly as data.json had it.
    * ------------------------------------------------------------------ */
   const BASE_TASKS = TASKS;
+  const BASE_DAYS = DAYS;
   let SESSION = null;
+  let LIVE_UPDATES = null;
+
+  /* Live entries sit on top of what data.json already had, rather than
+     replacing it, so the chat history from before any of this existed
+     stays in the feed. Same date means same card. */
+  function mergedDays() {
+    if (!LIVE_UPDATES) return BASE_DAYS;
+    const byKey = new Map();
+    BASE_DAYS.forEach((d) => {
+      byKey.set(d.date || ("label:" + d.label), { date: d.date, label: d.label, tag: d.tag, items: d.items.slice() });
+    });
+    LIVE_UPDATES.forEach((u) => {
+      if (!u.date) return;
+      let d = byKey.get(u.date);
+      if (!d) { d = { date: u.date, label: null, tag: null, items: [] }; byKey.set(u.date, d); }
+      if (u.tag && !d.tag) d.tag = u.tag;
+      d.items.push({ who: u.who, text: u.text, key: u.key, id: u.id });
+    });
+    return [...byKey.values()].sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date < b.date ? 1 : -1;
+    });
+  }
 
   window.ChamHQ = {
     setTasks(rows) {
@@ -102,10 +127,17 @@
       $("status-filters").replaceChildren();
       render();
     },
+    setUpdates(rows) {
+      LIVE_UPDATES = Array.isArray(rows) ? rows : null;
+      DAYS = mergedDays();
+      $("upd-filters").replaceChildren();
+      render();
+    },
     setSession(s) {
       SESSION = s;
       $("task-filters").replaceChildren();
       $("status-filters").replaceChildren();
+      $("upd-filters").replaceChildren();
       render();
     },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
@@ -163,7 +195,7 @@
    * ------------------------------------------------------------------ */
   function render() {
     renderGlance();
-    if (S.view === "updates") renderFeed();
+    if (S.view === "updates") { renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
     if (S.view === "tracker") renderTracker();
@@ -227,9 +259,23 @@
       ]);
       const bullets = el("div", { class: "bullets" });
       items.forEach((i) => {
-        bullets.appendChild(el("div", { class: "bullet" + (i.key ? " key" : "") }, [
+        const row = el("div", { class: "bullet" + (i.key ? " key" : "") }, [
           avatar(i.who), richText(i.text)
-        ]));
+        ]);
+        /* only entries that came from the database can be removed here;
+           the ones from data.json are edited in the file */
+        if (i.id && SESSION && SESSION.admin && window.ChamLive) {
+          row.appendChild(el("button", {
+            class: "bullet-x", type: "button", title: "Remove this line",
+            "aria-label": "Remove this line", text: "\u00d7",
+            onclick: async () => {
+              if (!window.confirm("Remove this line from the feed?")) return;
+              try { await window.ChamLive.deleteUpdate(i.id); }
+              catch (err) { window.alert("Could not remove it. " + (err.code || err.message)); }
+            }
+          }));
+        }
+        bullets.appendChild(row);
       });
       feed.appendChild(el("article", { class: "card day-card" }, [head, bullets]));
     });
@@ -249,6 +295,143 @@
   }
 
   /* ----- calendar ----- */
+  /* ------------------------------------------------------------------ *
+   * writing the feed - admins only
+   *
+   * Two ways in: one line at a time, or paste a whole day out of the chat
+   * and sort it into lines here. Either way it goes straight to the
+   * database and shows up on everyone's phone.
+   * ------------------------------------------------------------------ */
+  function peopleOptions(sel) {
+    Object.keys(PEOPLE)
+      .filter((k) => !/^Left /.test(PEOPLE[k].role || ""))
+      .forEach((k) => sel.appendChild(el("option", { value: k, text: PEOPLE[k].name })));
+    return sel;
+  }
+
+  /** "Bach: we met Mr Marshall" -> ["bach", "we met Mr Marshall"] */
+  function splitSpeaker(line) {
+    const m = /^\s*([A-Za-z\u00C0-\u1EF9 .]{1,24}?)\s*[:\u2013-]\s+(.*)$/.exec(line);
+    if (!m) return [null, line.trim()];
+    const name = m[1].trim().toLowerCase();
+    const hit = Object.keys(PEOPLE).find((k) =>
+      k === name || (PEOPLE[k].name || "").toLowerCase() === name);
+    return hit ? [hit, m[2].trim()] : [null, line.trim()];
+  }
+
+  function renderUpdateAdmin() {
+    const box = $("upd-admin");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && window.ChamLive);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (box.childElementCount) return;
+
+    const today = isoDay(new Date());
+
+    /* ---- one line at a time ---- */
+    const date = el("input", { class: "ad-in", type: "date", value: today, "aria-label": "Which day" });
+    const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who" }));
+    const text = el("input", { class: "ad-in wide", type: "text", placeholder: "What happened", "aria-label": "What happened" });
+    const tag = el("input", { class: "ad-in", type: "text", placeholder: "Day label (optional)", "aria-label": "Day label" });
+    const keyBox = el("input", { type: "checkbox", id: "upd-key" });
+    const msg = el("span", { class: "ad-msg" });
+
+    const post = el("button", { class: "au-go", text: "Post it",
+      onclick: async () => {
+        msg.classList.remove("bad");
+        if (!text.value.trim()) { msg.textContent = "Type what happened first."; msg.classList.add("bad"); return; }
+        post.disabled = true; post.textContent = "Posting\u2026";
+        try {
+          await window.ChamLive.addUpdates([{
+            date: date.value || today, who: who.value,
+            text: text.value.trim(), key: keyBox.checked,
+            tag: tag.value.trim() || null
+          }]);
+          text.value = ""; keyBox.checked = false;
+          msg.textContent = "Posted. It is on everyone\u2019s phone now.";
+        } catch (err) {
+          msg.textContent = "Did not post. " + (err.code || err.message);
+          msg.classList.add("bad");
+        }
+        post.disabled = false; post.textContent = "Post it";
+      }
+    });
+
+    /* ---- paste a whole day ---- */
+    const paste = el("textarea", { class: "ad-area", rows: "5",
+      placeholder: "Paste the day\u2019s messages here, one per line.\nLines like \u201cBach: we met Mr Marshall\u201d get matched to the right person automatically.",
+      "aria-label": "Paste the day\u2019s messages" });
+    const drafts = el("div", { class: "drafts" });
+    const pmsg = el("span", { class: "ad-msg" });
+
+    const sortBtn = el("button", { class: "act", type: "button", text: "Sort it into lines",
+      onclick: () => {
+        drafts.replaceChildren();
+        pmsg.textContent = "";
+        const lines = paste.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) { pmsg.textContent = "Nothing pasted yet."; pmsg.classList.add("bad"); return; }
+        pmsg.classList.remove("bad");
+        lines.forEach((line) => {
+          const [guess, body] = splitSpeaker(line);
+          const w = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who said it" }));
+          w.value = guess || "team";
+          const t = el("input", { class: "ad-in wide", type: "text", value: body, "aria-label": "What was said" });
+          const k = el("input", { type: "checkbox", "aria-label": "Highlight this one" });
+          const row = el("div", { class: "draft" }, [
+            w, t,
+            el("label", { class: "ad-check" }, [k, el("span", { text: "highlight" })]),
+            el("button", { class: "act ghost", type: "button", text: "drop",
+              onclick: () => row.remove() })
+          ]);
+          row._read = () => ({ who: w.value, text: t.value.trim(), key: k.checked });
+          drafts.appendChild(row);
+        });
+        pmsg.textContent = lines.length + " line" + (lines.length === 1 ? "" : "s") + " ready. Check who said what, then post.";
+      }
+    });
+
+    const postAll = el("button", { class: "au-go", text: "Post all of it",
+      onclick: async () => {
+        const rows = [...drafts.children].map((r) => r._read()).filter((r) => r.text);
+        if (!rows.length) { pmsg.textContent = "Nothing to post."; pmsg.classList.add("bad"); return; }
+        pmsg.classList.remove("bad");
+        postAll.disabled = true; postAll.textContent = "Posting\u2026";
+        try {
+          await window.ChamLive.addUpdates(rows.map((r) => ({
+            date: date.value || today, who: r.who, text: r.text, key: r.key,
+            tag: tag.value.trim() || null
+          })));
+          drafts.replaceChildren();
+          paste.value = "";
+          pmsg.textContent = "Posted " + rows.length + " line" + (rows.length === 1 ? "" : "s") + ".";
+        } catch (err) {
+          pmsg.textContent = "Did not post. " + (err.code || err.message);
+          pmsg.classList.add("bad");
+        }
+        postAll.disabled = false; postAll.textContent = "Post all of it";
+      }
+    });
+
+    box.append(
+      el("h3", { class: "grp", text: "Add to the feed" }),
+      el("div", { class: "adrow" }, [
+        date, who, text,
+        el("label", { class: "ad-check" }, [keyBox, el("span", { text: "highlight" })]),
+        post
+      ]),
+      el("div", { class: "adrow" }, [tag, msg]),
+      el("details", { class: "viz-details" }, [
+        el("summary", { text: "Or paste the whole day out of the chat" }),
+        el("div", { class: "pastebox" }, [
+          paste,
+          el("div", { class: "adrow" }, [sortBtn, postAll, pmsg]),
+          drafts
+        ])
+      ])
+    );
+  }
+
   function renderCalendar() {
     const y = S.month.getFullYear(), m = S.month.getMonth();
     $("cal-month").textContent = MONTH_FULL[m] + " " + y;
