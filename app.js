@@ -480,16 +480,21 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * tracker — what everyone has finished, and how far behind they are.
-   * Same numbers for everyone; it reads the same task list the board does.
+   * tracker - the analytics view.
+   *
+   * Three questions, three charts: how much has everyone got through, who
+   * is behind, and what is coming up. Progress is an ordered scale, so it
+   * uses one hue getting darker, not four colours competing.
    * ------------------------------------------------------------------ */
   function statsFor(key) {
     const mine = TASKS.filter((t) => t.who === key);
-    const done = mine.filter((t) => t.status === "done");
-    const open = mine.filter((t) => t.status !== "done");
+    const isDone = (t) => t.status === "done";
+    const done = mine.filter(isDone);
+    const doing = mine.filter((t) => t.status === "doing");
+    const rest = mine.filter((t) => !isDone(t) && t.status !== "doing");
+    const open = mine.filter((t) => !isDone(t));
     const overdue = open.filter((t) => t.due && t.due < TODAY);
 
-    // how far past its date the worst one is, and everything added up
     let daysLate = 0, worst = 0;
     overdue.forEach((t) => {
       const n = days(t.due, TODAY) || 0;
@@ -497,21 +502,57 @@
       if (n > worst) worst = n;
     });
 
-    // jobs finished after their due date, where we know when they were ticked
-    const lateDone = done.filter((t) => t.due && t.doneOn && t.doneOn > t.due).length;
-
     return {
       key, total: mine.length,
-      done: done.length, open: open.length,
-      overdue: overdue.length, daysLate, worst, lateDone,
+      done: done.length, doing: doing.length, rest: rest.length,
+      open: open.length, overdue: overdue.length,
+      daysLate, worst,
       pct: mine.length ? Math.round((done.length / mine.length) * 100) : 0
     };
+  }
+
+  /* one tooltip element, reused by every mark */
+  let tipEl = null;
+  function tip(node, lines) {
+    const show = (e) => {
+      if (!tipEl) { tipEl = el("div", { class: "viz-tip", role: "status" }); document.body.appendChild(tipEl); }
+      tipEl.replaceChildren();
+      lines.forEach((l, i) => tipEl.appendChild(el("div", { class: i ? "r" : "h", text: l })));
+      tipEl.hidden = false;
+      const r = node.getBoundingClientRect();
+      const x = (e && e.clientX !== undefined) ? e.clientX : r.left + r.width / 2;
+      tipEl.style.left = Math.min(Math.max(8, x), window.innerWidth - tipEl.offsetWidth - 8) + "px";
+      tipEl.style.top = (r.top + window.scrollY - tipEl.offsetHeight - 10) + "px";
+    };
+    const hide = () => { if (tipEl) tipEl.hidden = true; };
+    node.addEventListener("pointermove", show);
+    node.addEventListener("pointerenter", show);
+    node.addEventListener("focus", show);
+    node.addEventListener("pointerleave", hide);
+    node.addEventListener("blur", hide);
+  }
+
+  const STAGES = [
+    { k: "done",  cls: "s-done",  label: "Finished" },
+    { k: "doing", cls: "s-doing", label: "In progress" },
+    { k: "rest",  cls: "s-rest",  label: "Not started" }
+  ];
+
+  function legend(items) {
+    const box = el("div", { class: "viz-legend" });
+    items.forEach(([cls, label]) => {
+      box.appendChild(el("span", { class: "lg" }, [
+        el("i", { class: "sw " + cls, "aria-hidden": "true" }),
+        el("span", { text: label })
+      ]));
+    });
+    return box;
   }
 
   function renderTracker() {
     const sbox = $("track-sort");
     if (!sbox.childElementCount) {
-      [["behind","Furthest behind"],["done","Most finished"],["name","By name"]].forEach(([k, label]) => {
+      [["behind","Furthest behind"],["done","Most finished"],["load","Biggest workload"],["name","By name"]].forEach(([k, label]) => {
         sbox.appendChild(el("button", {
           class: "chipbtn plain", "aria-pressed": String(S.trackSort === k), "data-k": k,
           text: label,
@@ -520,64 +561,168 @@
       });
     }
 
-    const keys = [...new Set(TASKS.map((t) => t.who))].filter((k) => PEOPLE[k]);
-    const rows = keys.map(statsFor);
+    const rows = [...new Set(TASKS.map((t) => t.who))].filter((k) => PEOPLE[k]).map(statsFor);
 
-    /* the one-line team summary */
     const tot = rows.reduce((a, r) => ({
       done: a.done + r.done, open: a.open + r.open,
       overdue: a.overdue + r.overdue, daysLate: a.daysLate + r.daysLate
     }), { done: 0, open: 0, overdue: 0, daysLate: 0 });
 
+    /* ----- the four headline numbers ----- */
     const line = $("team-line");
-    line.replaceChildren(
-      el("div", {}, [el("span", { class: "tl-n", text: String(tot.done) }), el("span", { class: "tl-k", text: "finished" })]),
-      el("div", {}, [el("span", { class: "tl-n", text: String(tot.open) }), el("span", { class: "tl-k", text: "still open" })]),
-      el("div", {}, [el("span", { class: "tl-n" + (tot.overdue ? " bad" : ""), text: String(tot.overdue) }), el("span", { class: "tl-k", text: "past its date" })]),
-      el("div", {}, [el("span", { class: "tl-n" + (tot.daysLate ? " bad" : ""), text: String(tot.daysLate) }), el("span", { class: "tl-k", text: "days late, all told" })])
-    );
+    line.replaceChildren();
+    [
+      ["Finished", tot.done, false],
+      ["Still open", tot.open, false],
+      ["Past its date", tot.overdue, tot.overdue > 0],
+      ["Days late, all told", tot.daysLate, tot.daysLate > 0]
+    ].forEach(([k, v, bad]) => {
+      line.appendChild(el("div", { class: "kpi" }, [
+        el("span", { class: "tl-k", text: k }),
+        el("span", { class: "tl-n" + (bad ? " bad" : ""), text: String(v) })
+      ]));
+    });
 
     if (S.trackSort === "done")      rows.sort((a,b) => b.done - a.done || b.pct - a.pct);
     else if (S.trackSort === "name") rows.sort((a,b) => PEOPLE[a.key].name.localeCompare(PEOPLE[b.key].name));
+    else if (S.trackSort === "load") rows.sort((a,b) => b.total - a.total || b.open - a.open);
     else rows.sort((a,b) => b.daysLate - a.daysLate || b.overdue - a.overdue || b.open - a.open);
 
     const box = $("tracker");
     box.replaceChildren();
 
+    /* ----- chart 1: workload and progress ----- */
+    const most = Math.max(1, ...rows.map((r) => r.total));
+    const c1 = el("section", { class: "viz" }, [
+      el("h3", { class: "viz-h", text: "Every job, and how far along it is" }),
+      el("p", { class: "viz-sub", text: "One row per person. The bar is their whole workload, so a long bar means a lot on their plate." }),
+      legend(STAGES.map((st) => [st.cls, st.label]))
+    ]);
+
+    const plot1 = el("div", { class: "viz-plot" });
     rows.forEach((r) => {
-      const p = PEOPLE[r.key];
+      const track = el("div", { class: "hbar", style: "width:" + Math.round((r.total / most) * 100) + "%" });
+      STAGES.forEach((st) => {
+        const n = r[st.k];
+        if (!n) return;
+        const seg = el("button", {
+          class: "seg " + st.cls, type: "button",
+          style: "flex:" + n + " 0 0",
+          "aria-label": PEOPLE[r.key].name + ": " + n + " " + st.label.toLowerCase()
+        });
+        tip(seg, [PEOPLE[r.key].name, n + " " + st.label.toLowerCase() + " of " + r.total]);
+        track.appendChild(seg);
+      });
 
-      const bar = el("div", { class: "tbar", title: r.done + " of " + r.total + " finished" }, [
-        el("i", { style: "width:" + r.pct + "%" })
-      ]);
-
-      const nums = el("div", { class: "tnums" }, [
-        el("span", { class: "tn" }, [el("b", { text: String(r.done) }), document.createTextNode(" done")]),
-        el("span", { class: "tn" }, [el("b", { text: String(r.open) }), document.createTextNode(" open")]),
-        r.overdue
-          ? el("span", { class: "tn bad" }, [el("b", { text: String(r.overdue) }), document.createTextNode(" overdue")])
-          : el("span", { class: "tn good", text: "nothing overdue" }),
-        r.daysLate
-          ? el("span", { class: "tn bad" }, [el("b", { text: String(r.daysLate) }),
-              document.createTextNode(" day" + (r.daysLate === 1 ? "" : "s") + " late" + (r.worst > 0 ? " · worst " + r.worst : ""))])
-          : null
-      ]);
-
-      box.appendChild(el("article", { class: "card trow" + (r.overdue ? " s-late" : "") }, [
-        el("div", { class: "body" }, [
-          el("div", { class: "thead" }, [
-            avatar(r.key, true),
-            el("span", { class: "tname", text: p.name }),
-            p.role ? el("span", { class: "trole", text: p.role }) : null,
-            el("span", { class: "tpct", text: r.pct + "%" })
-          ]),
-          bar,
-          nums
-        ])
+      plot1.appendChild(el("div", { class: "hrow" }, [
+        el("span", { class: "hname" }, [avatar(r.key), el("span", { text: PEOPLE[r.key].name })]),
+        el("div", { class: "htrack" }, [track]),
+        el("span", { class: "hval", text: r.done + "/" + r.total })
       ]));
     });
+    c1.appendChild(plot1);
+    box.appendChild(c1);
 
-    if (!rows.length) box.appendChild(el("div", { class: "empty-state", text: "No jobs to count yet." }));
+    /* ----- chart 2: who is behind. only those who are. ----- */
+    const behind = rows.filter((r) => r.daysLate > 0).sort((a,b) => b.daysLate - a.daysLate);
+    const c2 = el("section", { class: "viz" }, [
+      el("h3", { class: "viz-h", text: "Days past the date" }),
+      el("p", { class: "viz-sub", text: "Every day, added up, that an unfinished job has sat past its due date." })
+    ]);
+    if (!behind.length) {
+      c2.appendChild(el("div", { class: "viz-none", text: "Nobody is behind. Every job with a date is still inside it." }));
+    } else if (behind.length === 1) {
+      /* one value is a number, not a chart - a lone bar at full width
+         reads as "enormous" when it might be a single day */
+      const r = behind[0];
+      c2.appendChild(el("div", { class: "viz-one" }, [
+        avatar(r.key, true),
+        el("span", { class: "one-n", text: String(r.daysLate) }),
+        el("span", { class: "one-k", text: "day" + (r.daysLate === 1 ? "" : "s") + " late \u00b7 "
+          + PEOPLE[r.key].name + " \u00b7 " + r.overdue + " job" + (r.overdue === 1 ? "" : "s") }),
+        el("span", { class: "one-sub", text: "Nobody else has anything past its date." })
+      ]));
+    } else {
+      const worst = Math.max(...behind.map((r) => r.daysLate));
+      const plot2 = el("div", { class: "viz-plot" });
+      behind.forEach((r) => {
+        const bar = el("button", {
+          class: "lbar", type: "button",
+          style: "width:" + Math.round((r.daysLate / worst) * 100) + "%",
+          "aria-label": PEOPLE[r.key].name + ": " + r.daysLate + " days late across " + r.overdue + " jobs"
+        });
+        tip(bar, [PEOPLE[r.key].name,
+                  r.daysLate + " day" + (r.daysLate === 1 ? "" : "s") + " late across " + r.overdue + " job" + (r.overdue === 1 ? "" : "s"),
+                  "worst one is " + r.worst + " day" + (r.worst === 1 ? "" : "s") + " over"]);
+        plot2.appendChild(el("div", { class: "hrow" }, [
+          el("span", { class: "hname" }, [avatar(r.key), el("span", { text: PEOPLE[r.key].name })]),
+          el("div", { class: "htrack" }, [bar]),
+          el("span", { class: "hval bad", text: String(r.daysLate) })
+        ]));
+      });
+      c2.appendChild(plot2);
+    }
+    box.appendChild(c2);
+
+    /* ----- chart 3: what is coming ----- */
+    const openTasks = TASKS.filter((t) => t.status !== "done");
+    const buckets = [
+      { label: "Overdue", sub: "already past its date", n: 0, cls: "b-late" },
+      { label: "This week", sub: "due in the next 7 days", n: 0, cls: "b-now" },
+      { label: "Week 2", sub: "due in 8 to 14 days", n: 0, cls: "b-now" },
+      { label: "Week 3+", sub: "due in 15 days or more", n: 0, cls: "b-far" },
+      { label: "No date", sub: "nobody has set a date", n: 0, cls: "b-none" }
+    ];
+    openTasks.forEach((t) => {
+      if (!t.due) { buckets[4].n++; return; }
+      const d = days(TODAY, t.due);
+      if (d === null) { buckets[4].n++; return; }
+      if (d < 0) buckets[0].n++;
+      else if (d <= 7) buckets[1].n++;
+      else if (d <= 14) buckets[2].n++;
+      else buckets[3].n++;
+    });
+    const tallest = Math.max(1, ...buckets.map((b) => b.n));
+
+    const cols = el("div", { class: "viz-cols" });
+    buckets.forEach((b) => {
+      const col = el("button", { class: "colwrap", type: "button",
+        "aria-label": b.label + ": " + b.n + " jobs, " + b.sub });
+      tip(col, [b.label, b.n + " job" + (b.n === 1 ? "" : "s"), b.sub]);
+      col.append(
+        el("span", { class: "coltrack" }, [
+          el("span", { class: "colstack", style: "height:" + (b.n ? Math.max(4, Math.round((b.n / tallest) * 100)) : 0) + "%" }, [
+            el("span", { class: "colval" + (b.n ? "" : " zero"), text: String(b.n) }),
+            b.n ? el("i", { class: "col " + b.cls }) : null
+          ])
+        ]),
+        el("span", { class: "collab", text: b.label })
+      );
+      cols.appendChild(col);
+    });
+
+    box.appendChild(el("section", { class: "viz" }, [
+      el("h3", { class: "viz-h", text: "What is coming up" }),
+      el("p", { class: "viz-sub", text: "Unfinished jobs only. The last column is the one to watch: things nobody has put a date on." }),
+      cols
+    ]));
+
+    /* ----- the same numbers plainly, for anyone who would rather read them ----- */
+    const tbl = el("table", { class: "viz-table" });
+    tbl.appendChild(el("thead", {}, [el("tr", {}, ["Person","Jobs","Finished","In progress","Not started","Overdue","Days late"]
+      .map((h) => el("th", { text: h, scope: "col" })))]));
+    const tb = el("tbody");
+    rows.forEach((r) => {
+      tb.appendChild(el("tr", {}, [
+        el("th", { scope: "row", text: PEOPLE[r.key].name })
+      ].concat([r.total, r.done, r.doing, r.rest, r.overdue, r.daysLate].map((v) => el("td", { text: String(v) })))));
+    });
+    tbl.appendChild(tb);
+    box.appendChild(el("details", { class: "viz-details" }, [
+      el("summary", { text: "See it as a table" }), tbl
+    ]));
+
+    if (!rows.length) box.replaceChildren(el("div", { class: "empty-state", text: "No jobs to count yet." }));
   }
 
   /* ----- footer ----- */
