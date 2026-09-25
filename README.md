@@ -24,25 +24,42 @@ of Google). Keep phone numbers, addresses and anything personal out of `data.jso
 
 ## Update it
 
-**`data.json` is the only file you normally touch.** Edit it on github.com (open the file,
-click the pencil, commit) and the site updates within a minute. No rebuild, no review, no
-app store.
+There are two halves now, and they update in completely different ways.
 
-Every time you update:
+### Tasks - on the site itself
 
-- Set `"TODAY"` to the real date, `YYYY-MM-DD`. Everything that says *overdue*, *3 days ago*
-  or *in 5 days* is worked out from it. If you forget, the page quietly starts lying.
-- If you change `app.js`, `styles.css` or `index.html`, also bump `CACHE` in `sw.js`
-  (`cham-hq-v1` → `cham-hq-v2`). Otherwise phones keep showing the old version from cache.
+Since sign-in was switched on, **tasks live in the database, not in this folder.**
+Nobody edits a file to change them:
+
+- **You and Bach** hand out jobs from the **Tasks** tab: pick the person, type the job,
+  set a due date. It is on their phone straight away.
+- **Everyone else** ticks their own jobs off - *Not started, Doing it, Stuck, Done* -
+  and can leave a note. They cannot touch anyone else's.
+- Admins can edit or delete anybody's.
+
+The **Tracker** tab adds these up on its own. Nothing to maintain.
+
+### Everything else - `data.json`
+
+The day-by-day feed, the calendar, the money figures, people's names and roles, and
+the footer links are still in `data.json`. Edit it on github.com (open the file, click
+the pencil, commit) and the site updates within a minute.
+
+- **You never set `"TODAY"` any more.** The page reads the real date off the device.
+  The date in `data.json` only stamps *"Chat read to ..."* in the corner, so move it
+  when you have read further up the chat, and otherwise leave it alone.
+- If you change `app.js`, `styles.css` or `index.html`, bump `CACHE` in `sw.js`
+  (`cham-hq-v7` → `cham-hq-v8`). Not strictly required - the service worker asks the
+  network first now - but it clears out the old copies cleanly.
 
 ### What goes where in `data.json`
 
 | Key | What it is |
 | --- | --- |
-| `TODAY` | The date the page treats as today |
+| `TODAY` | How far the chat has been read. Only stamps the header - the page gets the real date from the device |
 | `PEOPLE` | Everyone, with `name`, `role`, `color`, `initials`. The key (`bach`, `thuan`…) is what the other sections point at |
 | `DAYS` | The Updates feed. Newest first. `date` (or `null` with a `label`), `tag`, and `items` with `who` + `text`. Put `"key": true` on the ones that matter, they get highlighted. `**double stars**` makes text bold |
-| `TASKS` | `who`, `title`, `status`, `note`, and `due` or `since` |
+| `TASKS` | The original import only. Live tasks now come from the database - editing this list changes nothing for anyone signed in |
 | `EVENTS` | Calendar entries: `date`, `title`, `sub`, `state` |
 | `UNDATED` | Things with no date yet. This list is the point of the calendar, keep it honest |
 | `MONEY` | The figures strip: `fig` and `lbl` |

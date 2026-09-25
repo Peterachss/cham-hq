@@ -65,9 +65,13 @@ gh api -X POST repos/:owner/cham-hq/pages -f "source[branch]=main" -f "source[pa
 
 ## Updating it afterwards
 
-Edit **`data.json`** on github.com, commit, done — the site refreshes within a minute.
-Set `"TODAY"` to the real date every time, or everything that says *overdue* or *3 days ago*
-is wrong. If you ever change `app.js`, `styles.css` or `index.html`, bump `CACHE` in `sw.js`
-(`cham-hq-v1` → `cham-hq-v2`) or phones will keep showing the old version.
+**Tasks** are handed out and ticked off on the site itself - they live in the database,
+not in this folder. **Everything else** (the feed, the calendar, people, links) is in
+`data.json`: edit it on github.com, commit, and the site refreshes within a minute.
+
+You do not set `"TODAY"` any more - the page reads the real date off the device. That
+field only stamps how far the chat has been read.
+
+Full detail is in README.md and SETUP-FIREBASE.md.
 
 Full detail is in README.md.
