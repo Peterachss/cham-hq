@@ -56,7 +56,9 @@ def load_config():
             f"No settings at {CONFIG}\n"
             "Copy scripts/config.example.json there and fill it in."
         )
-    with open(CONFIG, encoding="utf-8") as f:
+    # utf-8-sig, because PowerShell and Notepad both like to leave a byte-order
+    # mark at the front and json.load refuses to parse one
+    with open(CONFIG, encoding="utf-8-sig") as f:
         cfg = json.load(f)
     for k in ("thread_url", "anthropic_api_key", "firebase_key_path"):
         if not cfg.get(k):
@@ -228,7 +230,7 @@ def firestore(cfg):
     from google.cloud import firestore as fs
     from google.oauth2 import service_account
 
-    with open(cfg["firebase_key_path"], encoding="utf-8") as f:
+    with open(cfg["firebase_key_path"], encoding="utf-8-sig") as f:
         info = json.load(f)
     return fs.Client(
         project=info["project_id"],
