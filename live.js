@@ -60,7 +60,7 @@ if (!CONFIGURED) {
     return n;
   };
 
-  let unsubTasks = null, unsubUpdates = null, unsubPhotos = null;
+  let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -131,12 +131,14 @@ if (!CONFIGURED) {
     if (unsubTasks) { unsubTasks(); unsubTasks = null; }
     if (unsubUpdates) { unsubUpdates(); unsubUpdates = null; }
     if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
+    if (unsubMoney) { unsubMoney(); unsubMoney = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
       window.ChamHQ.setTasks(null);       // fall back to data.json
       window.ChamHQ.setUpdates(null);
       window.ChamHQ.setPhotos(null);
+      window.ChamHQ.setMoney(null);
       showSignedOut();
       return;
     }
@@ -165,6 +167,7 @@ if (!CONFIGURED) {
       email: user.email.toLowerCase(),
       personKey: member.personKey || null,
       admin: member.admin === true,
+      finance: member.finance === true,
       name: member.name || (window.ChamHQ.personName(member.personKey) || user.email),
       role: window.ChamHQ.personRole(member.personKey)
     };
@@ -214,7 +217,10 @@ if (!CONFIGURED) {
             who: u.who || "team",
             text: u.text || "",
             key: u.key === true,
-            tag: u.tag || null
+            tag: u.tag || null,
+            auto: u.auto === true,
+            event: u.event || null,
+            ref: u.ref || null
           });
         });
         window.ChamHQ.setUpdates(rows);
@@ -241,6 +247,38 @@ if (!CONFIGURED) {
       (err) => {
         console.error("Chạm HQ: lost the photos", err);
         window.ChamHQ.setPhotos(null);
+      });
+
+    // Money in and out. Everyone can log; Thuan and the admins keep it tidy.
+    unsubMoney = onSnapshot(collection(db, "expenses"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({
+            id: d.id,
+            kind: v.kind === "in" ? "in" : "out",
+            date: v.date || null,
+            amount: typeof v.amount === "number" ? v.amount : 0,
+            description: v.description || "",
+            category: v.category || "Other",
+            budgetLine: v.budgetLine || "",
+            paidBy: v.paidBy || "cham",
+            method: v.method || "cash",
+            notes: v.notes || "",
+            owed: v.owed === true,
+            repaid: v.repaid === true,
+            receipt: v.receipt || "",
+            status: v.status || "new",
+            createdBy: v.createdBy || null,
+            sheetSyncedAt: v.sheetSyncedAt ? true : false
+          });
+        });
+        window.ChamHQ.setMoney(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the money log", err);
+        window.ChamHQ.setMoney(null);
       });
   });
 
@@ -269,12 +307,13 @@ if (!CONFIGURED) {
       await updateDoc(doc(db, "tasks", id), { note, updatedAt: serverTimestamp() });
     },
     async addTask(t) {
-      await addDoc(collection(db, "tasks"), {
+      const ref = await addDoc(collection(db, "tasks"), {
         who: t.who, title: t.title, note: t.note || "",
         status: "open", due: t.due || null, since: null,
         createdBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null,
         createdAt: serverTimestamp(), updatedAt: serverTimestamp()
       });
+      return ref.id;
     },
     async deleteTask(id) { await deleteDoc(doc(db, "tasks", id)); },
 
@@ -284,6 +323,7 @@ if (!CONFIGURED) {
         await addDoc(collection(db, "updates"), {
           date: u.date, who: u.who, text: u.text,
           key: u.key === true, tag: u.tag || null,
+          auto: u.auto === true, event: u.event || null, ref: u.ref || null,
           createdBy: who, createdAt: serverTimestamp()
         });
       }
@@ -298,7 +338,31 @@ if (!CONFIGURED) {
         createdAt: serverTimestamp()
       });
     },
-    async deletePhoto(id) { await deleteDoc(doc(db, "photos", id)); }
+    async deletePhoto(id) { await deleteDoc(doc(db, "photos", id)); },
+
+    async addMoney(e) {
+      await addDoc(collection(db, "expenses"), {
+        kind: e.kind, date: e.date, amount: e.amount,
+        description: e.description, category: e.category,
+        budgetLine: e.budgetLine || "", paidBy: e.paidBy, method: e.method,
+        notes: e.notes || "", owed: e.owed === true,
+        receipt: e.receipt || "", status: "new",
+        createdBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null,
+        createdAt: serverTimestamp()
+      });
+    },
+    /* Two separate facts: whether a line is in the sheet yet, and whether
+       whoever paid it has been paid back. Paying someone back must never
+       make an entry look like it reached the sheet when it has not. */
+    async setMoneyStatus(ids, status) {
+      for (const id of ids) {
+        const patch = { updatedAt: serverTimestamp() };
+        if (status === "logged") { patch.status = "logged"; patch.loggedAt = serverTimestamp(); }
+        if (status === "repaid") { patch.repaid = true; patch.repaidAt = serverTimestamp(); }
+        await updateDoc(doc(db, "expenses", id), patch);
+      }
+    },
+    async deleteMoney(id) { await deleteDoc(doc(db, "expenses", id)); }
   };
 
   showSignedOut();

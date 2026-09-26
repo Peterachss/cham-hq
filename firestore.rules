@@ -22,6 +22,8 @@ service cloud.firestore {
     // .get with a default: a member document with no 'admin' field simply
     // is not an admin, rather than erroring out mid-rule.
     function isAdmin()   { return isMember() && me().get('admin', false) == true; }
+    // Thuan, or whoever holds the money. Set finance: true on their member doc.
+    function isFinance() { return isMember() && me().get('finance', false) == true; }
 
     match /members/{memberEmail} {
       allow read:  if isMember();
@@ -49,6 +51,27 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if isAdmin()
                     || (isMember() && resource.data.who == me().personKey);
+    }
+
+    // Money in and out. Anybody can log a line under their own name; only
+    // finance and the admins can mark it as in the sheet, paid back, or
+    // change it afterwards. You may delete your own line until finance has
+    // dealt with it.
+    match /expenses/{expenseId} {
+      allow read:   if isMember();
+      allow create: if isMember()
+                    && request.resource.data.createdBy == email()
+                    && request.resource.data.kind in ['in', 'out']
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && request.resource.data.amount < 1000000000
+                    && request.resource.data.status == 'new'
+                    && request.resource.data.get('receipt', '').size() < 900000;
+      allow update: if isAdmin() || isFinance();
+      allow delete: if isAdmin() || isFinance()
+                    || (isMember()
+                        && resource.data.createdBy == email()
+                        && resource.data.status == 'new');
     }
 
     match /tasks/{taskId} {

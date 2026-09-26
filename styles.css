@@ -582,3 +582,153 @@
   .sl-k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .sl { flex: 1 1 auto; min-width: 70px; accent-color: var(--jade); height: 20px; }
   .sl-n { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 34px; text-align: right; }
+
+  /* ------------------------------------------------------------------ *
+   * money
+   * ------------------------------------------------------------------ */
+  .money-n { font-size: 22px; }
+  .money-seen { flex-basis: auto; font-family: var(--mono); }
+  .fsep { display: inline-block; width: 1px; height: 22px; background: var(--line); margin: 0 4px; align-self: center; }
+  .money-tools { margin-bottom: 14px; }
+  .money-month { display: flex; justify-content: space-between; align-items: baseline; }
+  .money-sum { font-family: var(--mono); font-size: 12.5px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+  .money-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .money-amt { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .money-row.in .money-amt { color: var(--jade); }
+  .money-row .tt { flex: 1 1 200px; }
+  .money-v { width: auto; min-width: 88px; }
+  .mbar {
+    appearance: none; border: 0; padding: 0; cursor: pointer;
+    display: block; height: 16px; min-width: 3px;
+    background: var(--viz-doing, var(--jade)); border-radius: 3px 4px 4px 3px;
+  }
+  .mbar.in { background: var(--viz-done, var(--jade)); }
+  .mbar:hover, .mbar:focus-visible { filter: brightness(1.12); outline: none; }
+  #money-chart .hrow { grid-template-columns: minmax(84px, 120px) 1fr 104px; }
+
+  /* lines the site wrote itself: present, but a step quieter than people's own words */
+  .bullet.auto p { color: var(--ink-2); }
+  .bullet.auto p b { color: var(--ink); font-weight: 600; }
+
+  /* ------------------------------------------------------------------ *
+   * money, second pass - one short form, and a ledger whose numbers
+   * line up in a column the way a ledger's should
+   * ------------------------------------------------------------------ */
+  .mform { padding: 16px 18px 14px; }
+  .mf-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .mf-head .grp { margin: 0; }
+
+  .seg-ctl { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; padding: 2px; background: var(--card-2); }
+  .seg-b {
+    appearance: none; border: 0; background: none; cursor: pointer; font: inherit;
+    font-size: 13px; color: var(--muted); padding: 5px 13px; border-radius: 7px;
+  }
+  .seg-b[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .seg-b:focus-visible { outline: 2px solid var(--jade); outline-offset: 1px; }
+
+  .mf-in {
+    font: inherit; font-size: 14px; color: var(--ink);
+    background: var(--card-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px; min-width: 0; width: 100%; box-sizing: border-box;
+  }
+  .mf-in:focus-visible { outline: 2px solid var(--jade); outline-offset: 1px; border-color: transparent; }
+  .mf-file { padding: 6px 8px; font-size: 12.5px; }
+
+  .mf-main { display: grid; grid-template-columns: 168px 1fr 150px; gap: 10px; }
+  .mf-amtwrap { position: relative; }
+  .mf-cur {
+    position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 15px; color: var(--muted); pointer-events: none;
+  }
+  .mf-amount { font-family: var(--mono); font-size: 17px; font-weight: 600; padding-left: 28px; letter-spacing: .01em; }
+  .mform.is-in .mf-amount { color: var(--jade); }
+
+  .mf-sub { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0 4px; min-height: 30px; }
+  .mf-seen { font-family: var(--mono); font-size: 13px; color: var(--jade); min-width: 120px; }
+  .mf-seen.bad { color: var(--clay); }
+  .mf-who { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mf-k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .mf-short { width: auto; padding: 6px 9px; font-size: 13px; }
+  .mf-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+  .mf-check[hidden] { display: none; }
+
+  .mf-more { margin: 6px 0 2px; }
+  .mf-more > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); padding: 4px 0; list-style-position: inside; }
+  .mf-more > summary:hover { color: var(--ink-2); }
+  .mf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .mf-row { margin-top: 10px; }
+  .mf-field { display: flex; flex-direction: column; gap: 5px; }
+
+  .mf-foot { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 12px; }
+  .mf-msg { font-size: 12.5px; color: var(--muted); margin-right: auto; }
+  .mf-msg.bad { color: var(--clay); }
+  .mf-msg.good { color: var(--jade); }
+  .mf-go { padding: 8px 22px; }
+
+  /* Thuan's bar */
+  .mtools {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px 14px; margin: 0 0 14px;
+  }
+  .mt-text { display: flex; flex-direction: column; gap: 1px; margin-right: auto; }
+  .mt-text b { font-size: 13px; color: var(--ink); font-weight: 600; }
+  .mt-text span { font-size: 12.5px; color: var(--muted); }
+  .mt-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mt-msg { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
+  .mt-msg:empty { display: none; }
+  .mt-msg.bad { color: var(--clay); }
+
+  /* the ledger */
+  .ledger {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; margin: 0 0 14px; box-shadow: var(--shadow);
+  }
+  .lg-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 11px 16px; background: var(--card-2); border-bottom: 1px solid var(--line);
+  }
+  .lg-month { font-family: var(--serif); font-size: 16px; color: var(--ink); }
+  .lg-total { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+
+  .lg-row {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 14px; align-items: start;
+    padding: 12px 16px;
+  }
+  .lg-row + .lg-row { border-top: 1px solid var(--line-soft); }
+  .lg-date { display: flex; flex-direction: column; align-items: center; line-height: 1.1; padding-top: 1px; }
+  .lg-date b { font-size: 17px; font-weight: 600; color: var(--ink); }
+  .lg-date span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .lg-main { min-width: 0; }
+  .lg-desc { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-size: 14.5px; color: var(--ink); }
+  .lg-meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .lg-amt {
+    font-family: var(--mono); font-size: 14.5px; font-weight: 600; color: var(--ink);
+    white-space: nowrap; text-align: right; padding-top: 1px;
+  }
+  .lg-row.in .lg-amt { color: var(--jade); }
+
+  .lg-flags { display: inline-flex; gap: 6px; }
+  .lg-flag { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .lg-flag.owed { color: var(--clay); }
+  .lg-flag.ok { color: var(--jade); }
+  .lg-flag.todo { color: var(--marigold); }
+
+  .lg-acts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; }
+  .lg-a {
+    appearance: none; border: 0; background: none; cursor: pointer; font: inherit; padding: 0;
+    font-size: 12.5px; color: var(--jade); font-weight: 600;
+  }
+  .lg-a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .lg-a.danger { color: var(--muted); font-weight: 500; }
+  .lg-a.danger:hover { color: var(--clay); }
+  .lg-a:focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; border-radius: 3px; }
+
+  @media (max-width: 620px) {
+    .mf-main { grid-template-columns: 1fr 1fr; }
+    .mf-main > input[type="text"]:not(.mf-amount) { grid-column: 1 / -1; order: 3; }
+    .mf-grid2 { grid-template-columns: 1fr; }
+    .mf-head { flex-wrap: wrap; }
+    .lg-row { grid-template-columns: 36px 1fr auto; gap: 10px; padding: 11px 12px; }
+    .lg-amt { font-size: 13.5px; }
+  }

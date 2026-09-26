@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=14" />
+<link rel="stylesheet" href="styles.css?v=15" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -32,6 +32,7 @@
       <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="true" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
+      <button class="tab" role="tab" id="tab-money" aria-controls="view-money" aria-selected="false" data-view="money">Money <span class="n" id="n-money"></span></button>
       <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
       <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
     </nav>
@@ -94,6 +95,17 @@
     <div id="board"></div>
   </section>
 
+  <section id="view-money" role="tabpanel" aria-labelledby="tab-money" tabindex="0" hidden>
+    <h2 class="sec">Money</h2>
+    <p class="hint">Every bit of money in and out, logged by whoever spent or took it. Thuan copies it into the finance sheet from here, so log it the day it happens and nobody has to chase receipts at the end of the month. Only signed-in members can see this.</p>
+    <div class="teamline" id="money-tiles"></div>
+    <div id="money-add" class="admin" hidden></div>
+    <div id="money-tools"></div>
+    <div class="filters" id="money-filters"></div>
+    <div id="money-chart"></div>
+    <div id="money-list"></div>
+  </section>
+
   <section id="view-photos" role="tabpanel" aria-labelledby="tab-photos" tabindex="0" hidden>
     <h2 class="sec">Photos</h2>
     <p class="hint">Evidence for CAS, and a record of what Chạm actually did. Only signed-in members can see these — they are not on the public page. Pictures are shrunk before they are saved, so keep your originals for the CAS write-up.</p>
@@ -137,8 +149,8 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=14"></script>
-<script src="app.js?v=14"></script>
-<script type="module" src="live.js?v=14"></script>
+<script src="firebase-config.js?v=15"></script>
+<script src="app.js?v=15"></script>
+<script type="module" src="live.js?v=15"></script>
 </body>
 </html>

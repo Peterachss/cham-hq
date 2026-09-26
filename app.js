@@ -97,6 +97,7 @@
   let SESSION = null;
   let LIVE_UPDATES = null;
   let PHOTOS = null;
+  let LEDGER = null;
 
   /* Live entries sit on top of what data.json already had, rather than
      replacing it, so the chat history from before any of this existed
@@ -112,7 +113,7 @@
       let d = byKey.get(u.date);
       if (!d) { d = { date: u.date, label: null, tag: null, items: [] }; byKey.set(u.date, d); }
       if (u.tag && !d.tag) d.tag = u.tag;
-      d.items.push({ who: u.who, text: u.text, key: u.key, id: u.id });
+      d.items.push({ who: u.who, text: u.text, key: u.key, id: u.id, auto: u.auto === true });
     });
     return [...byKey.values()].sort((a, b) => {
       if (!a.date) return 1;
@@ -126,6 +127,10 @@
       TASKS = Array.isArray(rows) ? rows : BASE_TASKS;
       $("task-filters").replaceChildren();
       $("status-filters").replaceChildren();
+      render();
+    },
+    setMoney(rows) {
+      LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
     setPhotos(rows) {
@@ -145,7 +150,7 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
@@ -153,6 +158,29 @@
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
   };
+
+  /* ------------------------------------------------------------------ *
+   * the feed writes itself
+   *
+   * Whenever something worth knowing happens on the site - a job finished,
+   * somebody stuck, work handed out, photos added, money logged - a line
+   * goes into the day-by-day feed on its own. Nobody has to type up what
+   * happened; the site already knows.
+   *
+   * Fire and forget: if it fails, the thing the person actually did has
+   * still been saved, and that is what matters.
+   * ------------------------------------------------------------------ */
+  function logActivity(entry) {
+    if (!SESSION || !window.ChamLive || !window.ChamLive.addUpdates) return;
+    const today = isoDay(new Date());
+    /* the same job finished twice in a day is one line, not two */
+    if (entry.ref && LIVE_UPDATES &&
+        LIVE_UPDATES.some((u) => u.auto && u.ref === entry.ref && u.event === entry.event && u.date === today)) return;
+    window.ChamLive.addUpdates([{
+      date: today, who: entry.who, text: entry.text,
+      key: entry.key === true, auto: true, event: entry.event, ref: entry.ref || null
+    }]).catch((err) => console.warn("Ch\u1ea1m HQ: activity line not saved", err));
+  }
 
   /** can the signed-in person move this particular job? */
   function canEdit(t) {
@@ -178,11 +206,13 @@
     updPerson: "all",
     trackSort: "behind",
     photoPerson: "all",
+    moneyKind: "out",
+    moneyShow: "all",
     month: (() => { const d = fromIso(TODAY); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
     selected: TODAY
   };
 
-  const VIEWS = ["updates","calendar","tasks","photos","tracker"];
+  const VIEWS = ["updates","calendar","tasks","money","photos","tracker"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -209,6 +239,7 @@
     if (S.view === "updates") { renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
+    if (S.view === "money") renderMoney();
     if (S.view === "photos") renderPhotos();
     if (S.view === "tracker") renderTracker();
     renderAdmin();
@@ -259,6 +290,8 @@
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
     $("n-photos").textContent = PHOTOS ? PHOTOS.length : "";
+    /* for Thuan the useful number is what has not reached the sheet yet */
+    $("n-money").textContent = LEDGER ? (LEDGER.filter((m) => m.status === "new").length || "") : "";
 
     const cr = fromIso(CHAT_READ);
     $("stamp").textContent = cr ? "Chat read to " + pretty(CHAT_READ) + " " + cr.getFullYear() : "";
@@ -294,7 +327,7 @@
       ]);
       const bullets = el("div", { class: "bullets" });
       items.forEach((i) => {
-        const row = el("div", { class: "bullet" + (i.key ? " key" : "") }, [
+        const row = el("div", { class: "bullet" + (i.key ? " key" : "") + (i.auto ? " auto" : "") }, [
           avatar(i.who), richText(i.text)
         ]);
         /* only entries that came from the database can be removed here;
@@ -737,7 +770,12 @@
           const b = e.currentTarget;
           if (t.status === k) return;
           b.disabled = true;
-          try { await window.ChamLive.setStatus(t.id, k); }
+          try {
+            await window.ChamLive.setStatus(t.id, k);
+            if (k === "done") logActivity({ who: t.who, ref: t.id, event: "done", text: "Finished **" + t.title + "**" });
+            if (k === "blocked") logActivity({ who: t.who, ref: t.id, event: "stuck",
+              text: "Stuck on **" + t.title + "**" + (t.note ? " \u2014 " + t.note : "") });
+          }
           catch (err) { b.disabled = false; flash(row, "Did not save. " + (err.code || err.message)); }
         }
       }));
@@ -872,12 +910,15 @@
         if (!title.value.trim()) { msg.textContent = "It needs a title."; msg.classList.add("bad"); return; }
         go.disabled = true; go.textContent = "Saving…";
         try {
-          await window.ChamLive.addTask({
+          const newId = await window.ChamLive.addTask({
             who: who.value, title: title.value.trim(),
             note: note.value.trim(), due: due.value || null
           });
+          logActivity({ who: SESSION.personKey, ref: newId, event: "assign",
+            text: "Gave " + (PEOPLE[who.value] ? PEOPLE[who.value].name : who.value) + " a job: **"
+              + title.value.trim() + "**" + (due.value ? ", due " + pretty(due.value) : "") });
           title.value = ""; note.value = ""; due.value = "";
-          msg.textContent = "Added. They will get it in tomorrow morning's email.";
+          msg.textContent = "Added. It is on their Tasks tab now.";
         } catch (err) {
           msg.textContent = "Did not save. " + (err.code || err.message);
           msg.classList.add("bad");
@@ -1203,6 +1244,7 @@
         msg.classList.remove("bad");
         go.disabled = true;
         let done = 0, failed = 0;
+        const capText = cap.value.trim();
         for (const f of files) {
           go.textContent = "Adding " + (done + failed + 1) + " of " + files.length + "\u2026";
           try {
@@ -1220,6 +1262,8 @@
         file.value = ""; cap.value = "";
         go.disabled = false; go.textContent = "Add them";
         msg.textContent = done + " added" + (failed ? ", " + failed + " would not go" : "") + ".";
+        if (done) logActivity({ who: SESSION.personKey, ref: "photos-" + Date.now(), event: "photos",
+          text: "Added " + done + " photo" + (done === 1 ? "" : "s") + (capText ? ": " + capText : "") });
         if (failed) msg.classList.add("bad");
       }
     });
@@ -1313,6 +1357,431 @@
       wall.appendChild(el("figure", { class: "pcard" }, [tile, foot]));
     });
     grid.appendChild(wall);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * money
+   *
+   * One log for money out and money in. Anybody can add a line; Thuan
+   * (finance) and the admins mark lines as copied into the sheet, or as
+   * paid back to whoever spent their own money.
+   *
+   * Thuan's sheet is the real record. This is where the numbers are caught
+   * the day they happen, so they reach it at all.
+   * ------------------------------------------------------------------ */
+  const OUT_CATS = ["Events", "Merch", "Media", "Operations", "Teaching", "Other"];
+  const IN_CATS  = ["Sales", "Donation", "Sponsor", "Other"];
+  const METHODS  = [["cash","Cash"],["transfer","Bank transfer"],["momo","MoMo"],["card","Card"]];
+
+  /** "250k" -> 250000, "1.2tr" / "1,2m" -> 1200000, "45.000" -> 45000 */
+  function parseVnd(raw) {
+    let t = String(raw || "").trim().toLowerCase().replace(/\s|₫|vnd|đ/g, "");
+    if (!t) return NaN;
+    let mult = 1;
+    if (/(tr|m|mil|triệu|trieu)$/.test(t)) { mult = 1000000; t = t.replace(/(tr|m|mil|triệu|trieu)$/, ""); }
+    else if (/(k|nghìn|nghin|ngàn|ngan)$/.test(t)) { mult = 1000; t = t.replace(/(k|nghìn|nghin|ngàn|ngan)$/, ""); }
+    if (mult > 1) {
+      t = t.replace(",", ".");                 // "1,2tr" means 1.2 million
+      const n = parseFloat(t);
+      return isFinite(n) ? Math.round(n * mult) : NaN;
+    }
+    /* plain amounts: dots and commas are thousand separators in Vietnam */
+    t = t.replace(/[.,]/g, "");
+    const n = parseInt(t, 10);
+    return isFinite(n) ? n : NaN;
+  }
+  const fmtVnd = (n) => (Math.round(n) || 0).toLocaleString("en-US") + " \u20ab";
+
+  function canManageMoney() { return Boolean(SESSION && (SESSION.admin || SESSION.finance)); }
+
+  function monthKey(iso) { return (iso || "").slice(0, 7); }
+  function monthName(key) {
+    const d = fromIso(key + "-01");
+    return d ? MONTH_FULL[d.getMonth()] + " " + d.getFullYear() : "No date";
+  }
+  const whoName = (k) => k === "cham" ? "Ch\u1ea1m's money" : (PEOPLE[k] ? PEOPLE[k].name : k);
+
+  function renderMoneyAdd() {
+    const box = $("money-add");
+    if (!box) return;
+    const on = Boolean(SESSION && window.ChamLive);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (box.childElementCount) return;
+
+    let kind = "out";
+    const today = isoDay(new Date());
+
+    /* --- out / in, as one segmented control --- */
+    const segOut = el("button", { class: "seg-b", type: "button", "aria-pressed": "true", text: "Money out" });
+    const segIn  = el("button", { class: "seg-b", type: "button", "aria-pressed": "false", text: "Money in" });
+    const seg = el("div", { class: "seg-ctl", role: "group", "aria-label": "Money out or money in" }, [segOut, segIn]);
+
+    /* --- the three things almost every entry needs --- */
+    const amount = el("input", { class: "mf-in mf-amount", type: "text", inputmode: "decimal",
+      placeholder: "250k", "aria-label": "Amount in dong", autocomplete: "off" });
+    const amountSeen = el("div", { class: "mf-seen", "aria-live": "polite" });
+    const desc = el("input", { class: "mf-in", type: "text", placeholder: "What was it for?", "aria-label": "What it was for" });
+    const cat = el("select", { class: "mf-in", "aria-label": "Category" });
+    const fillCats = () => {
+      const keep = cat.value;
+      cat.replaceChildren();
+      (kind === "out" ? OUT_CATS : IN_CATS).forEach((c) => cat.appendChild(el("option", { value: c, text: c })));
+      if ([...cat.options].some((o) => o.value === keep)) cat.value = keep;
+    };
+    fillCats();
+
+    /* --- who, with the pay-me-back tick right beside it --- */
+    const payer = el("select", { class: "mf-in mf-short", "aria-label": "Who paid" });
+    payer.appendChild(el("option", { value: "cham", text: "Ch\u1ea1m's money" }));
+    Object.keys(PEOPLE)
+      .filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || ""))
+      .forEach((k) => payer.appendChild(el("option", { value: k, text: PEOPLE[k].name })));
+    payer.value = SESSION.personKey || "cham";
+    const payerLabel = el("span", { class: "mf-k", text: "Paid by" });
+    const owedBox = el("input", { type: "checkbox", id: "mf-owed" });
+    const owedLabel = el("label", { class: "mf-check", for: "mf-owed" }, [owedBox, el("span", { text: "out of my own pocket \u2014 pay me back" })]);
+    const syncOwed = () => {
+      const selfPaid = kind === "out" && payer.value !== "cham";
+      owedLabel.hidden = !selfPaid;
+      if (!selfPaid) owedBox.checked = false;
+    };
+    payer.addEventListener("change", syncOwed);
+
+    /* --- the rest, folded away --- */
+    const date = el("input", { class: "mf-in", type: "date", value: today, "aria-label": "Date" });
+    const lineList = el("datalist", { id: "budget-lines" });
+    const line = el("input", { class: "mf-in", type: "text", list: "budget-lines", placeholder: "e.g. Halloween sale", "aria-label": "Which event" });
+    const method = el("select", { class: "mf-in", "aria-label": "How it was paid" });
+    METHODS.forEach(([v, t]) => method.appendChild(el("option", { value: v, text: t })));
+    const notes = el("input", { class: "mf-in", type: "text", placeholder: "Anything Thuan should know", "aria-label": "Notes" });
+    const receipt = el("input", { class: "mf-in mf-file", type: "file", accept: "image/*", "aria-label": "Receipt photo" });
+    const field = (label, input) => el("label", { class: "mf-field" }, [el("span", { class: "mf-k", text: label }), input]);
+    const more = el("details", { class: "mf-more" }, [
+      el("summary", { text: "More details \u2014 date, event, how it was paid, receipt" }),
+      el("div", { class: "mf-grid2" }, [
+        field("Date", date), field("Which event", line),
+        field("Paid with", method), field("Receipt photo", receipt),
+      ]),
+      el("div", { class: "mf-row" }, [field("Notes", notes)]),
+      lineList
+    ]);
+
+    const msg = el("span", { class: "mf-msg", "aria-live": "polite" });
+    const go = el("button", { class: "au-go mf-go", type: "button", text: "Log it" });
+
+    amount.addEventListener("input", () => {
+      const n = parseVnd(amount.value);
+      const has = amount.value.trim() !== "";
+      const ok = isFinite(n) && n > 0;
+      amountSeen.textContent = has ? (ok ? fmtVnd(n) : "can\u2019t read that") : "";
+      amountSeen.classList.toggle("bad", has && !ok);
+    });
+
+    const setKind = (k) => {
+      kind = k;
+      segOut.setAttribute("aria-pressed", String(k === "out"));
+      segIn.setAttribute("aria-pressed", String(k === "in"));
+      box.classList.toggle("is-in", k === "in");
+      payerLabel.textContent = k === "out" ? "Paid by" : "Received by";
+      desc.placeholder = k === "out" ? "What was it for?" : "Where did it come from?";
+      fillCats();
+      syncOwed();
+    };
+    segOut.addEventListener("click", () => setKind("out"));
+    segIn.addEventListener("click", () => setKind("in"));
+    setKind("out");
+
+    go.addEventListener("click", async () => {
+      msg.classList.remove("bad", "good");
+      const n = parseVnd(amount.value);
+      if (!(isFinite(n) && n > 0)) { msg.textContent = "Put in an amount \u2014 250k, 1.2tr, or 45.000 all work."; msg.classList.add("bad"); amount.focus(); return; }
+      if (!desc.value.trim()) { msg.textContent = "Say what it was for."; msg.classList.add("bad"); desc.focus(); return; }
+      go.disabled = true; go.textContent = "Saving\u2026";
+      try {
+        let rc = "";
+        if (receipt.files && receipt.files[0]) rc = (await shrink(receipt.files[0])).data;
+        const loggedDesc = desc.value.trim();
+        await window.ChamLive.addMoney({
+          kind, date: date.value || today, amount: n,
+          description: loggedDesc, category: cat.value,
+          budgetLine: line.value.trim(), paidBy: payer.value, method: method.value,
+          notes: notes.value.trim(), owed: owedBox.checked, receipt: rc
+        });
+        logActivity({ who: SESSION.personKey, ref: "money-" + Date.now(), event: "money",
+          text: (kind === "out" ? "Spent " : "Brought in ") + "**" + fmtVnd(n) + "** \u2014 " + loggedDesc });
+        amount.value = ""; desc.value = ""; notes.value = ""; line.value = ""; receipt.value = "";
+        owedBox.checked = false; amountSeen.textContent = ""; more.open = false; date.value = today;
+        msg.textContent = "Logged " + fmtVnd(n) + ".";
+        msg.classList.add("good");
+        amount.focus();
+      } catch (err) {
+        msg.textContent = "Did not save. " + (err.code || err.message);
+        msg.classList.add("bad");
+      }
+      go.disabled = false; go.textContent = "Log it";
+    });
+    [amount, desc].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); }));
+
+    box.classList.add("mform");
+    box.append(
+      el("div", { class: "mf-head" }, [el("h3", { class: "grp", text: "Log money" }), seg]),
+      el("div", { class: "mf-main" }, [
+        el("div", { class: "mf-amtwrap" }, [
+          el("span", { class: "mf-cur", "aria-hidden": "true", text: "\u20ab" }), amount
+        ]),
+        desc, cat
+      ]),
+      el("div", { class: "mf-sub" }, [
+        amountSeen,
+        el("span", { class: "mf-who" }, [payerLabel, payer, owedLabel])
+      ]),
+      more,
+      el("div", { class: "mf-foot" }, [msg, go])
+    );
+    syncOwed();
+  }
+
+  /** rows in exactly the order the finance sheet's columns run */
+  function sheetRows(list) {
+    return list.map((m) => m.kind === "out"
+      ? [m.date || "", m.category, m.description, m.amount, m.budgetLine, m.notes,
+         whoName(m.paidBy), (METHODS.find(([v]) => v === m.method) || [0, m.method])[1],
+         m.owed ? "Yes" : "", m.createdBy || "", m.id]
+      : [m.date || "", m.category, m.description, m.amount, m.budgetLine, m.notes,
+         whoName(m.paidBy), (METHODS.find(([v]) => v === m.method) || [0, m.method])[1],
+         m.createdBy || "", m.id]);
+  }
+  const tsvCell = (v) => String(v == null ? "" : v).replace(/[\t\r\n]+/g, " ");
+  const csvCell = (v) => { const t = String(v == null ? "" : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+
+  function renderMoneyTools(list) {
+    const box = $("money-tools");
+    box.replaceChildren();
+    if (!canManageMoney()) return;
+
+    const pending = list.filter((m) => m.status === "new");
+    const tab = S.moneyKind === "out" ? "Expenses" : "Income";
+    const msg = el("span", { class: "mt-msg", "aria-live": "polite" });
+
+    const copy = el("button", { class: "au-go", type: "button",
+      text: pending.length ? "Copy " + pending.length + " for the sheet" : "All in the sheet",
+      disabled: !pending.length,
+      onclick: async () => {
+        const text = sheetRows(pending).map((r) => r.map(tsvCell).join("\t")).join("\n");
+        try {
+          await navigator.clipboard.writeText(text);
+          msg.classList.remove("bad");
+          msg.textContent = "Copied. In the sheet\u2019s " + tab + " tab, click the first empty cell in column A and paste.";
+          done.hidden = false;
+        } catch (err) {
+          msg.textContent = "Your browser would not copy \u2014 use the CSV.";
+          msg.classList.add("bad");
+        }
+      }
+    });
+
+    const done = el("button", { class: "act", type: "button", hidden: true, text: "Pasted \u2014 mark them done",
+      onclick: async () => {
+        done.disabled = true;
+        try {
+          await window.ChamLive.setMoneyStatus(pending.map((m) => m.id), "logged");
+          msg.textContent = pending.length + " marked as in the sheet.";
+        } catch (err) {
+          msg.textContent = "Did not save. " + (err.code || err.message);
+          msg.classList.add("bad");
+          done.disabled = false;
+        }
+      }
+    });
+
+    const csv = el("button", { class: "act ghost", type: "button", text: "CSV",
+      title: "Download everything as a spreadsheet file",
+      onclick: () => {
+        const head = ["Kind","Date","Category","Description","Amount","Budget line","Notes","Paid or received by","Method","Owed back","Status","Logged by","ID"];
+        const rows = (LEDGER || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || "")).map((m) =>
+          [m.kind === "out" ? "Out" : "In", m.date, m.category, m.description, m.amount, m.budgetLine, m.notes,
+           whoName(m.paidBy), (METHODS.find(([v]) => v === m.method) || [0, m.method])[1],
+           m.owed ? (m.repaid ? "Paid back" : "Yes") : "", m.status, m.createdBy || "", m.id]);
+        const text = "\ufeff" + [head].concat(rows).map((r) => r.map(csvCell).join(",")).join("\r\n");
+        const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv" })),
+                            download: "cham-money-" + isoDay(new Date()) + ".csv" });
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    });
+
+    box.appendChild(el("div", { class: "mtools" }, [
+      el("div", { class: "mt-text" }, [
+        el("b", { text: "Finance sheet" }),
+        el("span", { text: pending.length
+          ? pending.length + " " + (S.moneyKind === "out" ? "expense" : "income") + " line" + (pending.length === 1 ? "" : "s") + " waiting"
+          : "up to date" })
+      ]),
+      el("div", { class: "mt-btns" }, [copy, done, csv]),
+      msg
+    ]));
+  }
+
+  function renderMoney() {
+    const list = $("money-list");
+    const tiles = $("money-tiles");
+    const chart = $("money-chart");
+    list.replaceChildren(); tiles.replaceChildren(); chart.replaceChildren();
+
+    renderMoneyAdd();
+
+    if (!SESSION) {
+      $("money-tools").replaceChildren();
+      $("money-filters").replaceChildren();
+      list.appendChild(el("div", { class: "empty-state", text: "Sign in to see the money log. It is kept off the public page on purpose." }));
+      return;
+    }
+
+    const all = LEDGER || [];
+    const thisMonth = monthKey(TODAY);
+    const inMonth = all.filter((m) => monthKey(m.date) === thisMonth);
+    const outM = inMonth.filter((m) => m.kind === "out").reduce((a, m) => a + m.amount, 0);
+    const inM  = inMonth.filter((m) => m.kind === "in").reduce((a, m) => a + m.amount, 0);
+    const owed = all.filter((m) => m.kind === "out" && m.owed && !m.repaid);
+    const owedSum = owed.reduce((a, m) => a + m.amount, 0);
+    const notInSheet = all.filter((m) => m.status === "new").length;
+
+    [
+      ["Out this month", fmtVnd(outM), false],
+      ["In this month", fmtVnd(inM), false],
+      ["Owed back to members", owed.length ? fmtVnd(owedSum) : "Nobody", owed.length > 0],
+    ].concat(canManageMoney() ? [["Not in the sheet yet", String(notInSheet), notInSheet > 0]] : [])
+    .forEach(([k, v, flag]) => tiles.appendChild(el("div", { class: "kpi" }, [
+      el("span", { class: "tl-k", text: k }),
+      el("span", { class: "tl-n money-n" + (flag ? " bad" : ""), text: v })
+    ])));
+
+    /* ----- kind + filter chips ----- */
+    const fbox = $("money-filters");
+    if (!fbox.childElementCount) {
+      [["out","Money out"],["in","Money in"]].forEach(([k, label]) => fbox.appendChild(el("button", {
+        class: "chipbtn plain", "aria-pressed": String(S.moneyKind === k), "data-k": "kind-" + k, text: label,
+        onclick: () => { S.moneyKind = k;
+          fbox.querySelectorAll('[data-k^="kind-"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === "kind-" + k)));
+          renderMoney(); }
+      })));
+      fbox.appendChild(el("span", { class: "fsep" }));
+      [["all","Everything"],["new","Not in the sheet"],["owed","Owed back"]].forEach(([k, label]) => fbox.appendChild(el("button", {
+        class: "chipbtn plain", "aria-pressed": String(S.moneyShow === k), "data-k": "show-" + k, text: label,
+        onclick: () => { S.moneyShow = k;
+          fbox.querySelectorAll('[data-k^="show-"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === "show-" + k)));
+          renderMoney(); }
+      })));
+    }
+
+    const ofKind = all.filter((m) => m.kind === S.moneyKind);
+    renderMoneyTools(ofKind);
+
+    /* budget lines people have used before, offered as suggestions */
+    const dl = $("budget-lines");
+    if (dl) {
+      dl.replaceChildren();
+      [...new Set(all.map((m) => m.budgetLine).filter(Boolean))].sort()
+        .forEach((b) => dl.appendChild(el("option", { value: b })));
+    }
+
+    /* ----- this month by category: one series, one colour ----- */
+    const byCat = {};
+    inMonth.filter((m) => m.kind === S.moneyKind).forEach((m) => { byCat[m.category] = (byCat[m.category] || 0) + m.amount; });
+    const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    if (cats.length) {
+      const top = cats[0][1];
+      const plot = el("div", { class: "viz-plot" });
+      cats.forEach(([c, v]) => {
+        const bar = el("button", { class: "mbar" + (S.moneyKind === "in" ? " in" : ""), type: "button",
+          style: "width:" + Math.max(2, Math.round((v / top) * 100)) + "%",
+          "aria-label": c + ": " + fmtVnd(v) });
+        tip(bar, [c, fmtVnd(v), MONTH_FULL[fromIso(TODAY).getMonth()]]);
+        plot.appendChild(el("div", { class: "hrow" }, [
+          el("span", { class: "hname", text: c }),
+          el("div", { class: "htrack" }, [bar]),
+          el("span", { class: "hval money-v", text: fmtVnd(v) })
+        ]));
+      });
+      chart.appendChild(el("section", { class: "viz" }, [
+        el("h3", { class: "viz-h", text: (S.moneyKind === "out" ? "Where it went" : "Where it came from") + " this month" }),
+        plot
+      ]));
+    }
+
+    /* ----- the log itself: a ledger, month by month ----- */
+    let rows = ofKind;
+    if (S.moneyShow === "new") rows = rows.filter((m) => m.status === "new");
+    if (S.moneyShow === "owed") rows = rows.filter((m) => m.owed && !m.repaid);
+    rows = rows.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    if (!rows.length) {
+      list.appendChild(el("div", { class: "empty-state", text:
+        !all.length ? "Nothing logged yet. Spent money on Ch\u1ea1m? Log it above the same day."
+                    : "Nothing here with that filter." }));
+      return;
+    }
+
+    const months = new Map();
+    rows.forEach((m) => {
+      const k = monthKey(m.date);
+      if (!months.has(k)) months.set(k, []);
+      months.get(k).push(m);
+    });
+
+    months.forEach((items, mk) => {
+      const total = items.reduce((a, m) => a + m.amount, 0);
+      const ledger = el("div", { class: "ledger" });
+      ledger.appendChild(el("div", { class: "lg-head" }, [
+        el("span", { class: "lg-month", text: monthName(mk) }),
+        el("span", { class: "lg-total", text: (S.moneyKind === "out" ? "\u2212 " : "+ ") + fmtVnd(total) })
+      ]));
+
+      items.forEach((m) => {
+        const d = fromIso(m.date);
+        const isMine = SESSION.email && m.createdBy === SESSION.email;
+        const methodName = (METHODS.find(([v]) => v === m.method) || [0, m.method])[1];
+
+        /* only the facts that are not obvious; nothing that repeats */
+        const meta = [m.category];
+        if (m.budgetLine) meta.push(m.budgetLine);
+        meta.push(whoName(m.paidBy));
+        meta.push(methodName);
+
+        const flags = el("span", { class: "lg-flags" });
+        if (m.owed && !m.repaid) flags.appendChild(el("span", { class: "lg-flag owed", text: "owe " + whoName(m.paidBy) }));
+        if (m.owed && m.repaid) flags.appendChild(el("span", { class: "lg-flag ok", text: "paid back" }));
+        if (m.status === "new" && canManageMoney()) flags.appendChild(el("span", { class: "lg-flag todo", text: "not in sheet" }));
+
+        const acts = el("div", { class: "lg-acts" });
+        if (m.receipt) acts.appendChild(el("button", { class: "lg-a", type: "button", text: "Receipt",
+          onclick: () => openLightbox({ data: m.receipt, who: m.paidBy, date: m.date, caption: m.description }) }));
+        if (canManageMoney() && m.status === "new") acts.appendChild(el("button", { class: "lg-a", type: "button", text: "In sheet",
+          onclick: () => window.ChamLive.setMoneyStatus([m.id], "logged").catch((e) => flash(acts, "Did not save. " + (e.code || e.message))) }));
+        if (canManageMoney() && m.owed && !m.repaid) acts.appendChild(el("button", { class: "lg-a", type: "button", text: "Paid back",
+          onclick: () => window.ChamLive.setMoneyStatus([m.id], "repaid").catch((e) => flash(acts, "Did not save. " + (e.code || e.message))) }));
+        if (canManageMoney() || (isMine && m.status === "new")) acts.appendChild(el("button", { class: "lg-a danger", type: "button", text: "Delete",
+          onclick: async () => {
+            if (!window.confirm("Delete \u201c" + m.description + "\u201d (" + fmtVnd(m.amount) + ")?")) return;
+            try { await window.ChamLive.deleteMoney(m.id); }
+            catch (e) { flash(acts, "Did not delete. " + (e.code || e.message)); }
+          } }));
+
+        ledger.appendChild(el("div", { class: "lg-row " + (m.kind === "in" ? "in" : "out") }, [
+          el("div", { class: "lg-date" }, d ? [
+            el("b", { text: String(d.getDate()) }), el("span", { text: MON[d.getMonth()] })
+          ] : [el("span", { text: "\u2014" })]),
+          el("div", { class: "lg-main" }, [
+            el("div", { class: "lg-desc" }, [el("span", { text: m.description }), flags]),
+            el("div", { class: "lg-meta", text: meta.join(" \u00b7 ") + (m.notes ? " \u2014 " + m.notes : "") }),
+            acts.childElementCount ? acts : null
+          ]),
+          el("div", { class: "lg-amt", text: (m.kind === "in" ? "+ " : "\u2212 ") + fmtVnd(m.amount) })
+        ]));
+      });
+
+      list.appendChild(ledger);
+    });
   }
 
   /* ----- footer ----- */
