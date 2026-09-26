@@ -377,8 +377,18 @@
     /^(seen|delivered|sent|you sent|active now)\b/i,
     /^\d+\s+active( today)?$/i,
     /^(liked|loved|reacted|replied)\b/i,
-    /^[a-z ]*replied to (themselves|a message)/i,
-    /^(enter|message|send|aa)$/i
+    /replied to (you|themselves|a message)/i,
+    /^(enter|message|send|aa)$/i,
+    // the furniture a real Instagram copy drags along with it
+    /^user[\s-]?avatar$/i,
+    /^user[\s-]?profile[\s-]?picture$/i,
+    /^(profile )?photo$/i,
+    /^this (photo|video) can only be/i,
+    /^use the mobile app/i,
+    /^(you )?(sent|forwarded) (a|an) /i,
+    /^\d+ (new )?messages?$/i,
+    /^(reply|forward|copy|unsend|remove)$/i,
+    /^open photo/i
   ];
   function isNoise(line) {
     const t = line.trim();
