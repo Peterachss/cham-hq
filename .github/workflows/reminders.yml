@@ -1,11 +1,24 @@
-name: Morning task email
+name: Chạm emails
 
-# 00:00 UTC is 07:00 in Vietnam. GitHub's scheduler can run a few minutes
-# late when it is busy; that is normal and nothing to fix.
+# Hourly, so a job handed out reaches the person the same morning rather
+# than the next day. The 00:00 UTC run is 07:00 in Vietnam and is the one
+# that also sends the daily digest.
+#
+# GitHub's scheduler runs late when it is busy; a run drifting by ten or
+# twenty minutes is normal and nothing to fix.
 on:
   schedule:
-    - cron: "0 0 * * *"
-  workflow_dispatch:        # lets you send one by hand from the Actions tab
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Also send the morning digest"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Print what would be sent, send nothing"
+        type: boolean
+        default: true
 
 jobs:
   send:
@@ -20,9 +33,23 @@ jobs:
       - name: Install dependencies
         run: pip install --quiet google-cloud-firestore
 
-      - name: Send the emails
+      - name: Work out which run this is
+        id: mode
+        run: |
+          FLAGS=""
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # 00:00 UTC is 07:00 Asia/Ho_Chi_Minh
+            if [ "$(date -u +%H)" = "00" ]; then FLAGS="--digest"; fi
+          else
+            if [ "${{ inputs.digest }}" = "true" ]; then FLAGS="--digest"; fi
+            if [ "${{ inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          fi
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+          echo "running with: ${FLAGS:-assignments only}"
+
+      - name: Send
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python scripts/send_reminders.py
+        run: python scripts/notify.py ${{ steps.mode.outputs.flags }}
