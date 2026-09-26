@@ -29,7 +29,7 @@ if (!CONFIGURED) {
 
   const {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-    sendPasswordResetEmail, updatePassword
+    sendPasswordResetEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential
   } = auth_;
   const {
     getFirestore, collection, doc, getDoc, onSnapshot,
@@ -120,8 +120,52 @@ if (!CONFIGURED) {
         el("b", { text: session.name }),
         el("span", { class: "au-sub", text: session.admin ? "admin" : (session.role || "member") })
       ]),
+      el("button", { class: "au-link", text: "Change password", onclick: togglePasswordForm }),
       el("button", { class: "au-link", text: "Sign out", onclick: () => signOut(auth) })
     );
+  }
+
+  /* Change your own password while signed in. Firebase wants proof it is
+     really you (your current password) before it will change it. */
+  function togglePasswordForm() {
+    const open = bar.querySelector(".au-pw");
+    if (open) { open.remove(); return; }
+    const user = auth.currentUser;
+    if (!user) return;
+    const cur  = el("input", { type: "password", placeholder: "Current password", autocomplete: "current-password", "aria-label": "Current password" });
+    const nw   = el("input", { type: "password", placeholder: "New password (8+ characters)", autocomplete: "new-password", "aria-label": "New password" });
+    const nw2  = el("input", { type: "password", placeholder: "New password again", autocomplete: "new-password", "aria-label": "New password again" });
+    const note = el("span", { class: "au-note" });
+    const save = el("button", { class: "au-go", text: "Save new password" });
+    const cancel = el("button", { class: "au-link", text: "Cancel", onclick: () => form.remove() });
+    const bad = (t) => { note.textContent = t; note.classList.add("bad"); };
+    async function submit() {
+      note.textContent = ""; note.classList.remove("bad");
+      if (!cur.value || !nw.value) { bad("Fill in your current and new password."); return; }
+      if (nw.value.length < 8) { bad("The new password needs at least 8 characters."); return; }
+      if (nw.value !== nw2.value) { bad("The two new passwords don't match."); return; }
+      if (nw.value === cur.value) { bad("That's the same as your current password."); return; }
+      save.disabled = true; save.textContent = "Saving\u2026";
+      try {
+        await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, cur.value));
+        await updatePassword(user, nw.value);
+        form.replaceChildren(el("span", { class: "au-note ok", text: "Password changed. Use the new one next time you sign in." }));
+        setTimeout(() => form.remove(), 4000);
+      } catch (err) {
+        save.disabled = false; save.textContent = "Save new password";
+        const c = String(err && err.code || "");
+        if (c.includes("invalid-credential") || c.includes("wrong-password")) bad("Your current password isn't right.");
+        else if (c.includes("weak-password")) bad("Pick a stronger password.");
+        else if (c.includes("too-many-requests")) bad("Too many tries. Wait a minute and go again.");
+        else if (c.includes("network")) bad("No connection.");
+        else bad("Couldn't change it. " + c);
+      }
+    }
+    save.addEventListener("click", submit);
+    [cur, nw, nw2].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); }));
+    const form = el("div", { class: "au-pw" }, [cur, nw, nw2, save, cancel, note]);
+    bar.appendChild(form);
+    cur.focus();
   }
 
   function friendly(err) {

@@ -1009,3 +1009,8 @@
   .act.nudge:hover:not([disabled]) { background: var(--marigold-soft); }
   .act.nudge.sent { color: var(--jade); border-color: var(--line); opacity: .85; }
   .an-item.missed .an-state { color: var(--clay); }
+
+  /* change password, under the signed-in bar */
+  .au-pw { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0 2px; }
+  .au-pw input { flex: 1 1 170px; }
+  .au-note.ok { color: var(--jade); }
