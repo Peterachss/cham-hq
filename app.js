@@ -29,6 +29,17 @@
   const MONTH_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
+  /* Panels are built as lists like [header, maybeThis, maybeThat] where a
+     part that has nothing to show is null. The browser's own append() and
+     replaceChildren() would print those as the word "null" - so skip them,
+     everywhere, once. */
+  for (const m of ["append", "prepend", "replaceChildren"]) {
+    const orig = Element.prototype[m];
+    Element.prototype[m] = function (...kids) {
+      return orig.apply(this, kids.filter((k) => k !== null && k !== undefined && k !== false));
+    };
+  }
+
   /* "Are you sure?" without a pop-up. Browser confirm boxes can be blocked
      (in-app browsers, or after ticking "don't show more dialogs"), and a
      blocked one silently answers no - so the button seemed dead. Instead
