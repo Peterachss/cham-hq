@@ -2490,6 +2490,12 @@
       const fit = () => {
         const R = document.documentElement.style;
         R.setProperty("--top-h", top.offsetHeight + "px");
+        /* on phones she stands inside the header, between its first line and the tabs */
+        const br = top.querySelector(".brandrow"), tb = top.querySelector(".tabs");
+        if (br && tb) {
+          R.setProperty("--brand-b", Math.round(br.getBoundingClientRect().bottom) + "px");
+          R.setProperty("--tabs-b", Math.round(tb.getBoundingClientRect().bottom) + "px");
+        }
         /* on wider screens she stands right under the "chat read to" date */
         const st = $("stamp");
         if (st && st.offsetParent) {
