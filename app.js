@@ -344,14 +344,73 @@
     return sel;
   }
 
-  /** "Bach: we met Mr Marshall" -> ["bach", "we met Mr Marshall"] */
-  function splitSpeaker(line) {
-    const m = /^\s*([A-Za-z\u00C0-\u1EF9 .]{1,24}?)\s*[:\u2013-]\s+(.*)$/.exec(line);
-    if (!m) return [null, line.trim()];
-    const name = m[1].trim().toLowerCase();
-    const hit = Object.keys(PEOPLE).find((k) =>
-      k === name || (PEOPLE[k].name || "").toLowerCase() === name);
-    return hit ? [hit, m[2].trim()] : [null, line.trim()];
+  /* ------------------------------------------------------------------ *
+   * reading a pasted chat
+   *
+   * Instagram does not paste as "Bach: hello". It puts the sender's name
+   * on its own line and then their messages underneath, until the next
+   * name. It also drops in timestamps, "Seen", reaction lines and other
+   * furniture. This walks the lines keeping track of who is talking.
+   * ------------------------------------------------------------------ */
+
+  /** which Chạm person, if any, a line names */
+  function whoIsThis(raw) {
+    const line = String(raw).trim().replace(/[:\u2013-]\s*$/, "").toLowerCase();
+    if (!line || line.length > 32) return null;
+    const words = line.split(/\s+/);
+    if (words.length > 4) return null;
+    for (const k of Object.keys(PEOPLE)) {
+      if (k === "team") continue;
+      const name = (PEOPLE[k].name || "").toLowerCase();
+      if (line === k || line === name) return k;
+      /* display names like "Peter Gallagher" or "thuan__17" */
+      if (words.some((w) => w.replace(/[^a-z\u00C0-\u1EF9]/g, "") === k
+                         || w.replace(/[^a-z\u00C0-\u1EF9]/g, "") === name)) return k;
+    }
+    return null;
+  }
+
+  const CHAT_NOISE = [
+    /^\d{1,2}:\d{2}(\s*[ap]m)?$/i,          // 9:41 PM
+    /^(today|yesterday|now|just now)$/i,
+    /^(mon|tue|wed|thu|fri|sat|sun)[a-z]*$/i,
+    /^(seen|delivered|sent|you sent|active now)\b/i,
+    /^\d+\s+active( today)?$/i,
+    /^(liked|loved|reacted|replied)\b/i,
+    /^[a-z ]*replied to (themselves|a message)/i,
+    /^(enter|message|send|aa)$/i
+  ];
+  function isNoise(line) {
+    const t = line.trim();
+    if (!t) return true;
+    if (t.length < 2) return true;
+    if (!/[a-z\u00C0-\u1EF9\d]/i.test(t)) return true;   // emoji or punctuation only
+    return CHAT_NOISE.some((re) => re.test(t));
+  }
+
+  /** a pasted chat -> [{who, text}], attributing by the name headings */
+  function parseChat(text) {
+    const out = [];
+    let current = "team";
+    String(text).split(/\r?\n/).forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+
+      /* "Bach: we met Mr Marshall" - still supported */
+      const inline = /^\s*([A-Za-z\u00C0-\u1EF9 ._]{1,24}?)\s*[:\u2013-]\s+(.*)$/.exec(line);
+      if (inline) {
+        const k = whoIsThis(inline[1]);
+        if (k) { out.push({ who: k, text: inline[2].trim() }); current = k; return; }
+      }
+
+      /* a name on its own line: everything after it is theirs */
+      const head = whoIsThis(line);
+      if (head) { current = head; return; }
+
+      if (isNoise(line)) return;
+      out.push({ who: current, text: line });
+    });
+    return out;
   }
 
   function renderUpdateAdmin() {
@@ -412,18 +471,19 @@
     function sortIntoLines() {
         drafts.replaceChildren();
         pmsg.textContent = "";
-        const lines = paste.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const lines = parseChat(paste.value);
         if (!lines.length) {
-          pmsg.textContent = "Paste the messages into the box first.";
+          pmsg.textContent = paste.value.trim()
+            ? "Nothing usable in there - it looked like timestamps and reactions."
+            : "Paste the messages into the box first.";
           pmsg.classList.add("bad");
           return 0;
         }
         pmsg.classList.remove("bad");
-        lines.forEach((line) => {
-          const [guess, body] = splitSpeaker(line);
+        lines.forEach((entry) => {
           const w = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who said it" }));
-          w.value = guess || "team";
-          const t = el("input", { class: "ad-in wide", type: "text", value: body, "aria-label": "What was said" });
+          w.value = entry.who;
+          const t = el("input", { class: "ad-in wide", type: "text", value: entry.text, "aria-label": "What was said" });
           const k = el("input", { type: "checkbox", "aria-label": "Highlight this one" });
           const row = el("div", { class: "draft" }, [
             w, t,
@@ -434,7 +494,9 @@
           row._read = () => ({ who: w.value, text: t.value.trim(), key: k.checked });
           drafts.appendChild(row);
         });
-        pmsg.textContent = lines.length + " line" + (lines.length === 1 ? "" : "s") + " ready. Check who said what, then post.";
+        const guessed = lines.filter((l) => l.who !== "team").length;
+        pmsg.textContent = lines.length + " line" + (lines.length === 1 ? "" : "s") + " ready, "
+          + guessed + " matched to a person. Fix any that are wrong, then post.";
         return lines.length;
     }
 
