@@ -193,8 +193,13 @@ service cloud.firestore {
     // Who has notifications on, and on what kind of device - worked out by
     // the sender from the subscriptions nobody else may read. Admins only.
     match /meta/{docId} {
-      allow read:  if docId == 'pushStatus' && isAdmin();
+      allow read:  if docId in ['pushStatus', 'status'] && isAdmin();
       allow write: if false;
+    }
+
+    // Your own getting-started checklist: yours alone, nobody else's.
+    match /onboarding/{who} {
+      allow read, write: if isMember() && who == email();
     }
 
     match /site/{docId} {

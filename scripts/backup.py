@@ -31,8 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import push  # noqa: E402
-
-from google.cloud import firestore  # noqa: E402
+import status  # noqa: E402
 
 DIR = os.path.join(push.HOME, "backups")
 KEEP = 60
@@ -96,6 +95,7 @@ def backup(db):
     size = os.path.getsize(path)
     log(f"backup saved: {os.path.basename(path)} ({size / 1024:.0f} KB) - "
         + ", ".join(f"{c} {n}" for c, n in counts.items() if n))
+    status.beat("backup", True, f"{size / 1024:.0f} KB, {sum(counts.values())} documents", db)
     old = sorted(glob.glob(os.path.join(DIR, "cham-hq-*.json.gz")))[:-KEEP]
     for p in old:
         os.remove(p)
@@ -162,4 +162,5 @@ if __name__ == "__main__":
         raise
     except Exception as e:
         log(f"BACKUP FAILED: {type(e).__name__}: {e}")
+        status.beat("backup", False, f"{type(e).__name__}: {e}")
         sys.exit(1)

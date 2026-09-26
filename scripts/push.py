@@ -45,6 +45,9 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.oauth2 import service_account
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import status  # noqa: E402
+
 HOME = os.path.join(os.path.expanduser("~"), ".cham-hq")
 SITE = "https://peterachss.github.io/cham-hq/"
 VN = dt.timezone(dt.timedelta(hours=7))        # Vietnam has no daylight saving
@@ -327,6 +330,54 @@ def push_status(db, members, subs, dry):
                     log(f"  {m['name']} turned notifications on - nudge cleared")
 
 
+# What "healthy" means for each background job: the longest it may go
+# without checking in, and whether the admins get pinged when it doesn't.
+# The laptop-only watcher is not alerted on - a closed laptop is normal,
+# and GitHub still sends announcements every 15 minutes.
+HEALTH = {
+    "github":   (3,  True,  "The GitHub backup job (every 15 min)"),
+    "finance":  (6,  True,  "The finance sheet sync"),
+    "backup":   (50, True,  "The nightly backup"),
+    "chatwrap": (50, True,  "The 9pm chat wrap"),
+    "announce": (0.5, False, "Instant announcements on Peter's laptop"),
+}
+
+
+def health(db, P, by_key, subs):
+    ref = db.collection("meta").document("status")
+    st = ref.get().to_dict() or {}
+    jobs, alerts = st.get("jobs", {}), dict(st.get("alerts", {}))
+    now = dt.datetime.now(VN)
+    admins = [m for m in by_key.values() if m["admin"]]
+    changed = False
+    for key, (hours, ping, label) in HEALTH.items():
+        j = jobs.get("push" if key == "github" else key, {})
+        at = j.get("githubAt") if key == "github" else j.get("at")
+        if key == "chatwrap" and j.get("ok") is None:
+            continue                                     # waiting on a person, not broken
+        try:
+            age = (now - dt.datetime.fromisoformat(at)).total_seconds() / 3600 if at else None
+        except ValueError:
+            age = None
+        if age is None:
+            continue                                     # never set up: shown on the panel, not alerted
+        bad = age > hours or j.get("ok") is False
+        if bad and ping and key not in alerts:
+            why = "keeps failing: " + j.get("msg", "") if j.get("ok") is False else f"hasn't run for {age:.0f} hours"
+            log(f"  health: {label} {why}")
+            for m in admins:
+                if m["key"] in subs:
+                    P.send(subs[m["key"]], "⚠️ Something stopped", f"{label} {why}. Details on the Updates tab.",
+                           url="./#updates", tag="health-" + key)
+            alerts[key] = now.isoformat(timespec="minutes")
+            changed = True
+        elif not bad and key in alerts:
+            alerts.pop(key)
+            changed = True
+    if changed and not P.dry:
+        ref.set({"alerts": alerts}, merge=True)
+
+
 def pretty(iso):
     try:
         d = dt.date.fromisoformat(iso)
@@ -587,7 +638,13 @@ def main():
 
     if not args.dry_run:
         meta_ref.set(meta)
+    try:
+        health(db, P, by_key, subs)
+    except Exception as e:
+        log(f"  health: {type(e).__name__}: {e}")
     log(f"done: {P.sent} sent, {P.gone} dead removed, {P.failed} failed")
+    if not args.dry_run:
+        status.beat("push", P.failed == 0 or P.sent > 0, f"{P.sent} sent, {P.failed} failed", db)
 
 
 if __name__ == "__main__":
@@ -595,6 +652,7 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception:
+    except Exception as e:
         log("CRASHED:\n" + traceback.format_exc())
+        status.beat("push", False, f"crashed: {type(e).__name__}: {e}")
         sys.exit(1)

@@ -36,6 +36,7 @@ import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import push  # noqa: E402  (same folder: firebase(), vapid_key(), load(), Pusher)
+import status  # noqa: E402
 
 from google.cloud import firestore  # noqa: E402
 from google.cloud.firestore_v1.base_query import FieldFilter  # noqa: E402
@@ -135,6 +136,7 @@ def watch(db, key):
         try:
             send_pending(db, key)
             last_ok = time.time()
+            status.beat("announce", True, "watching", db)
         except Exception:
             log("send failed:\n" + traceback.format_exc())
             try:

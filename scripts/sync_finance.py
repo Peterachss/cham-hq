@@ -62,7 +62,13 @@ RUNNING_ROW = "Running costs"    # money out that belongs to no fundraiser
 DONATION_ROW = "Donations"       # money in that belongs to no fundraiser
 
 
+LAST = {}          # what the run ended with, for the status panel
+
+
 def log(msg):
+    LAST["msg"] = msg
+    if msg.startswith("waiting") or "failed" in msg or msg.startswith("could not"):
+        LAST["ok"] = False
     line = f"[{dt.datetime.now(VN):%Y-%m-%d %H:%M}] {msg}"
     print(line, flush=True)
     try:
@@ -278,10 +284,15 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import status
     try:
         main()
+        if "--dry-run" not in sys.argv:
+            status.beat("finance", LAST.get("ok", True), LAST.get("msg", "ran"))
     except SystemExit:
         raise
     except Exception as e:
         log(f"CRASHED: {type(e).__name__}: {e}")
+        status.beat("finance", False, f"crashed: {type(e).__name__}: {e}")
         sys.exit(1)

@@ -42,6 +42,8 @@ async function seed() {
     await setDoc(doc(db, "site", "data"), { PEOPLE: {} });
     await setDoc(doc(db, "meta", "pushStatus"), { people: {} });
     await setDoc(doc(db, "meta", "push"), { initialised: true });
+    await setDoc(doc(db, "meta", "status"), { jobs: {} });
+    await setDoc(doc(db, "onboarding", THUAN), { notify: false });
     await setDoc(doc(db, "sales", "s-open"), { name: "Ice cream sale", open: true, items: [{ id: "v", name: "Vanilla", price: 30000 }] });
     await setDoc(doc(db, "sales", "s-shut"), { name: "Bake sale", open: false, items: [{ id: "c", name: "Cookie", price: 15000 }] });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
@@ -207,6 +209,11 @@ const cases = [
   ["admin sees who has notifications on",    true,  () => getDoc(doc(as(BACH), "meta/pushStatus"))],
   ["member cannot see notification status",  false, () => getDoc(doc(as(EMILY), "meta/pushStatus"))],
   ["admin cannot read the sender's state",   false, () => getDoc(doc(as(BACH), "meta/push"))],
+  ["admin reads the system status",          true,  () => getDoc(doc(as(BACH), "meta/status"))],
+  ["member cannot read the system status",   false, () => getDoc(doc(as(EMILY), "meta/status"))],
+  ["member saves own checklist",             true,  () => setDoc(doc(as(EMILY), "onboarding", EMILY), { notify: true })],
+  ["member cannot read someone's checklist", false, () => getDoc(doc(as(EMILY), "onboarding", THUAN))],
+  ["member cannot write someone's checklist",false, () => setDoc(doc(as(EMILY), "onboarding", THUAN), { notify: true })],
   ["admin nudges someone to turn them on",   true,  () => updateDoc(doc(as(BACH), "members", EMILY), { notifyNudge: { by: "bach", at: "2026-09-26" } })],
   ["member cannot nudge via member records", false, () => updateDoc(doc(as(EMILY), "members", THUAN), { notifyNudge: { by: "emily" } })],
 ];

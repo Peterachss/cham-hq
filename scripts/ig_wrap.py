@@ -30,6 +30,9 @@ import re
 import sys
 import traceback
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import status  # noqa: E402
+
 HOME = os.path.join(os.path.expanduser("~"), ".cham-hq")
 CONFIG = os.path.join(HOME, "config.json")
 PROFILE = os.path.join(HOME, "ig-profile")
@@ -402,6 +405,7 @@ def main():
     if not os.path.exists(os.path.join(HOME, "ig-signed-in")):
         # never signed in: don't pop a browser up on someone's screen every night
         log("the bot account has never been signed in - run: python scripts/ig_wrap.py --login")
+        status.beat("chatwrap", None, "waiting: the Instagram bot account needs signing in once")
         return
 
     today = dt.datetime.now(dt.timezone(dt.timedelta(hours=7))).date().isoformat()
@@ -410,11 +414,13 @@ def main():
     rows = scrape(cfg, headless=not args.headed and not cfg.get("headed", False))
     if not rows:
         log("nothing scraped - Instagram markup may have changed, or the bot is signed out")
+        status.beat("chatwrap", False, "read nothing from the chat - signed out, or Instagram changed")
         return
 
     lines = summarise(cfg, rows)
     if not lines:
         log("nothing worth posting today")
+        status.beat("chatwrap", True, "ran - nothing worth posting today")
         return
 
     for ln in lines:
@@ -426,6 +432,7 @@ def main():
 
     publish(cfg, lines, today, "model" if has_real_key(cfg) else "rules")
     log("done")
+    status.beat("chatwrap", True, f"{len(lines)} lines waiting for review")
 
 
 if __name__ == "__main__":
@@ -433,6 +440,7 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception:
+    except Exception as e:
         log("FAILED:\n" + traceback.format_exc())
+        status.beat("chatwrap", False, f"crashed: {type(e).__name__}")
         sys.exit(1)

@@ -71,7 +71,7 @@ if (!CONFIGURED) {
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
-  let unsubPushStatus = null;
+  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -153,6 +153,7 @@ if (!CONFIGURED) {
         await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, cur.value));
         await updatePassword(user, nw.value);
         form.replaceChildren(el("span", { class: "au-note ok", text: "Password changed. Use the new one next time you sign in." }));
+        window.ChamLive.saveOnboarding({ password: true }).catch(() => {});
         setTimeout(() => form.remove(), 4000);
       } catch (err) {
         save.disabled = false; save.textContent = "Save new password";
@@ -195,6 +196,8 @@ if (!CONFIGURED) {
     if (unsubSponsors) { unsubSponsors(); unsubSponsors = null; }
     if (unsubMeetings) { unsubMeetings(); unsubMeetings = null; }
     if (unsubPushStatus) { unsubPushStatus(); unsubPushStatus = null; }
+    if (unsubSys) { unsubSys(); unsubSys = null; }
+    if (unsubOnboard) { unsubOnboard(); unsubOnboard = null; }
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -416,6 +419,18 @@ if (!CONFIGURED) {
         window.ChamHQ.setSponsors(rows);
       },
       (err) => { console.error("Chạm HQ: lost the sponsors", err); window.ChamHQ.setSponsors(null); });
+    // your own getting-started checklist
+    unsubOnboard = onSnapshot(doc(db, "onboarding", session.email),
+      (s) => window.ChamHQ.setOnboarding(s.exists() ? s.data() : {}),
+      () => window.ChamHQ.setOnboarding({}));
+
+    // admins: every background job's last check-in
+    if (session.admin) {
+      unsubSys = onSnapshot(doc(db, "meta", "status"),
+        (s) => window.ChamHQ.setSysStatus(s.exists() ? s.data() : { jobs: {} }),
+        () => window.ChamHQ.setSysStatus(null));
+    }
+
     // admins: who has notifications on (worked out by the sender)
     if (session.admin) {
       unsubPushStatus = onSnapshot(doc(db, "meta", "pushStatus"),
@@ -578,6 +593,10 @@ if (!CONFIGURED) {
       const ref = await addDoc(collection(db, "meetings"), { ...m, createdAt: serverTimestamp() });
       return ref.id;
     },
+    async saveOnboarding(patch) {
+      await setDoc(doc(db, "onboarding", auth.currentUser.email.toLowerCase()), patch, { merge: true });
+    },
+    openPasswordForm() { if (!bar.querySelector(".au-pw")) togglePasswordForm(); window.scrollTo({ top: 0, behavior: "smooth" }); },
     async nudgeNotify(email, by) {
       await updateDoc(doc(db, "members", email), { notifyNudge: { by, at: new Date().toISOString().slice(0, 10) } });
     },

@@ -126,6 +126,7 @@
   let DRAFTS = null;
   let ANNOUNCES = null;
   let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
+  let SYS = null, OB = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -167,6 +168,14 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setSysStatus(d) { SYS = d; if (S.view === "updates") renderSystem(); },
+    setOnboarding(d) {
+      const first = OB === null;
+      OB = d || {};
+      // someone who hasn't finished setting up lands on their checklist
+      if (first && !OB.dismissed && obSteps().some((x) => !x.done) && !location.hash) setView("me");
+      else if (S.view === "me") renderMe();
+    },
     setPushStatus(d) { PUSHSTATUS = d; if (S.view === "updates") renderWhosOn(); },
     setSponsors(rows) { SPONSORS = Array.isArray(rows) ? rows : null; render(); },
     setMeetings(rows) { MEETINGS = Array.isArray(rows) ? rows : null; if (S.view === "calendar") { renderMeetings(); renderCalendar(); } },
@@ -192,7 +201,7 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings","whos-on","me"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings","whos-on","me","system","countdown"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
@@ -484,14 +493,18 @@
   function render() {
     if (renderQueued) return;
     renderQueued = true;
-    requestAnimationFrame(() => { renderQueued = false; renderNow(); });
+    // next frame - or, if the tab is in the background (browsers pause
+    // frames there), a quarter of a second, so an update is never stuck
+    const go = () => { if (renderQueued) renderNow(); };
+    requestAnimationFrame(go);
+    setTimeout(go, 250);
   }
   function renderNow() {
     renderQueued = false;
     renderGlance();
     renderNotify();
     renderFab();
-    if (S.view === "updates") { renderAnnounce(); renderWhosOn(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "me") renderMe();
     if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
     if (S.view === "sponsors") renderSponsors();
@@ -914,6 +927,180 @@
     return out;
   }
 
+  /* ------------------------------------------------------------------ *
+   * Getting started: the five things every member needs to do once.
+   * Ticks itself where the site can tell (notifications on, opened from
+   * the home screen); the rest are one tap. Saved per person, so it
+   * follows you between devices.
+   * ------------------------------------------------------------------ */
+  const STANDALONE = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  const IS_PHONE = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+  function obSteps() {
+    const ob = OB || {}, me = SESSION ? SESSION.personKey : null;
+    const touched = TASKS.some((t) => t.who === me && (t.status !== "open" || (t.progress || 0) > 0));
+    return [
+      { k: "home", title: "Put Ch\u1ea1m HQ on your home screen", done: Boolean(ob.home) || STANDALONE(),
+        how: IS_IOS ? "In Safari tap Share (the square with an arrow) \u2192 Add to Home Screen, then open Ch\u1ea1m HQ from your home screen \u2014 on iPhone that\u2019s the only way notifications work."
+           : IS_PHONE ? "Tap the \u22ee menu \u2192 Install app (or Add to Home screen). It opens like a real app after that."
+           : "On a computer this is optional \u2014 bookmark it, or do it later on your phone.", btn: "Done" },
+      { k: "notify", title: "Turn on notifications", done: Boolean(ob.notify) || pushState === "on",
+        how: pushState === "ios" ? "Do the home-screen step first; then the Turn on button appears in the bar at the top."
+           : pushState === "denied" ? "They\u2019re blocked: click the padlock next to the web address, set Notifications to Allow, then reload."
+           : "Tap Turn on in the green bar at the top and Allow. You\u2019ll hear about new jobs, nudges and announcements.", btn: "Take me there", go: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
+      { k: "password", title: "Change your password", done: Boolean(ob.password),
+        how: "Swap the password you were given for your own.", btn: "Change it now", go: () => window.ChamLive.openPasswordForm(), noTick: true },
+      { k: "job", title: "Look at your jobs", done: Boolean(ob.job) || touched,
+        how: "Your jobs are just below. Tap Doing it on one you\u2019ve started, or slide how far along it is.", btn: "Show me",
+        go: () => { const j = $("me-jobs"); if (j) j.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+      { k: "tour", title: "The 1-minute tour", done: Boolean(ob.tour), how: "", btn: "Show me around", tour: true }
+    ];
+  }
+
+  function welcomeCard() {
+    if (!OB || OB.dismissed) return null;
+    const steps = obSteps();
+    // quietly record what the site could see for itself
+    const seen = {};
+    if (steps[0].done && !OB.home) seen.home = true;
+    if (pushState === "on" && !OB.notify) seen.notify = true;
+    if (steps[3].done && !OB.job) seen.job = true;
+    if (Object.keys(seen).length) window.ChamLive.saveOnboarding(seen).catch(() => {});
+    const done = steps.filter((x) => x.done).length;
+    if (done === steps.length) {
+      if (!OB.finished) { window.ChamLive.saveOnboarding({ finished: true }).catch(() => {}); toast("All set up \ud83c\udf89"); }
+      return null;
+    }
+    const tick = (k) => window.ChamLive.saveOnboarding({ [k]: true }).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message)));
+    const TOUR = [["Me", "your jobs, points, money owed to you \u2014 start here"], ["Updates", "what happened, day by day; admins announce from here"],
+      ["Calendar", "dates, deadlines and meetings"], ["Tasks", "every job, who has it, how far along"], ["Money", "log anything spent or taken, pre-orders"],
+      ["Photos", "pictures for CAS \u2014 members only"], ["Tracker", "points, Officer of the week, impact"], ["Sponsors", "who we\u2019re asking for support"],
+      ["+ Log money", "the green button, on every tab"]];
+    return el("section", { class: "welcome" }, [
+      el("div", { class: "wl-head" }, [
+        el("b", { text: "\ud83d\udc4b Welcome to Ch\u1ea1m HQ \u2014 " + done + " of " + steps.length + " done" }),
+        el("button", { class: "nb-link", type: "button", text: "Hide", onclick: () => tick("dismissed") })
+      ]),
+      el("div", { class: "wl-bar" }, [el("span", { style: "width:" + (done / steps.length * 100) + "%" })]),
+      el("ol", { class: "wl-steps" }, steps.map((x) => el("li", { class: x.done ? "done" : "" }, [
+        el("span", { class: "wl-tick", "aria-hidden": "true", text: x.done ? "\u2713" : "" }),
+        el("div", { class: "wl-body" }, x.done ? [el("b", { text: x.title })] : [
+          el("b", { text: x.title }),
+          x.how ? el("span", { text: x.how }) : null,
+          x.tour ? el("details", { class: "wl-tour" }, [el("summary", { text: x.btn }),
+            el("ul", {}, TOUR.map(([t, d]) => el("li", {}, [el("b", { text: t }), document.createTextNode(" \u2014 " + d)]))),
+            el("button", { class: "act", type: "button", text: "Got it", onclick: () => tick("tour") })])
+          : el("div", { class: "sf-row" }, [
+              el("button", { class: "act", type: "button", text: x.btn, onclick: () => { if (x.go) x.go(); if (!x.noTick && x.k !== "notify") tick(x.k); } }),
+              x.k === "home" || x.k === "password" ? el("button", { class: "nb-link", type: "button", text: x.k === "password" ? "Already did" : "Skip", onclick: () => tick(x.k) }) : null])
+        ])
+      ])))
+    ]);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * The next event, counting down: its jobs, its pre-orders, its money.
+   * It comes from a pre-order sale or an activity with a date; failing
+   * that, a target date from the plan (marked as not locked yet).
+   * ------------------------------------------------------------------ */
+  const STOP = new Set(["sale", "sales", "event", "before", "after", "break", "target", "first", "with", "from", "the", "and", "one", "day", "our", "chạm"]);
+  function nextEvents() {
+    const out = [];
+    (SALES || []).forEach((x) => { if (x.date && x.date >= TODAY) out.push({ name: x.name, date: x.date, sale: x }); });
+    (ACTS || []).forEach((a) => { if (a.date && a.date >= TODAY) out.push({ name: a.name, date: a.date }); });
+    EVENTS.forEach((e) => {
+      if (e.date >= TODAY && e.state !== "past" && /sale|fundrais|booth|drop|market|tournament|program/i.test(e.title))
+        out.push({ name: e.title.replace(/^Target:\s*/i, ""), date: e.date, tentative: e.state === "target" });
+    });
+    const seen = new Set();
+    return out.sort((a, b) => a.date.localeCompare(b.date) || (Number(!!a.tentative) - Number(!!b.tentative)))
+      .filter((e) => { const k = e.date + e.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  function renderCountdown() {
+    const box = $("countdown");
+    if (!box) return;
+    const evs = SESSION ? nextEvents() : [];
+    box.hidden = !evs.length;
+    if (!evs.length) { box.replaceChildren(); return; }
+    const e = evs[0], d = days(TODAY, e.date);
+    const words = e.name.toLowerCase().split(/[^a-zà-ỹ0-9#]+/i).filter((w) => w.length >= 4 && !STOP.has(w));
+    const jobs = TASKS.filter((t) => t.status !== "done"
+      && (words.some((w) => t.title.toLowerCase().includes(w)) || t.due === e.date));   // named after it, or due that day
+    const line = (e.sale && e.sale.name) || e.name;
+    const money = (LEDGER || []).filter((m) => (m.budgetLine || "").toLowerCase() === line.toLowerCase());
+    const mIn = money.filter((m) => m.kind === "in").reduce((n, m) => n + m.amount, 0);
+    const mOut = money.filter((m) => m.kind === "out").reduce((n, m) => n + m.amount, 0);
+    const orders = e.sale ? (ORDERS || []).filter((o) => o.sale === e.sale.id) : [];
+
+    box.replaceChildren(
+      el("div", { class: "cd-main" }, [
+        el("div", { class: "cd-num" }, [el("span", { class: "cd-n", text: d === 0 ? "Today" : d === 1 ? "1" : String(d) }),
+          d > 0 ? el("span", { class: "cd-k", text: d === 1 ? "day to go" : "days to go" }) : null]),
+        el("div", { class: "cd-what" }, [
+          el("b", { text: e.name.charAt(0).toUpperCase() + e.name.slice(1) }),
+          el("span", { text: pretty(e.date) + (e.tentative ? " \u00b7 target date, not locked yet" : "") }),
+        ])
+      ]),
+      el("div", { class: "cd-facts" }, [
+        el("div", {}, [el("span", { class: "sf-k", text: "Jobs for it" }),
+          jobs.length ? el("ul", { class: "cd-jobs" }, jobs.slice(0, 5).map((t) => el("li", {}, [avatar(t.who), el("span", { text: t.title }),
+            el("span", { class: "pill " + (t.due && t.due < TODAY ? "late" : t.status), text: t.due && t.due < TODAY ? "overdue" : STATUS[t.status].label })])))
+          : el("span", { class: "cd-none", text: "Nothing on the jobs list mentions it yet." })]),
+        e.sale ? el("div", {}, [el("span", { class: "sf-k", text: "Pre-orders" }),
+          el("span", { class: "cd-val", text: orders.length + " order" + (orders.length === 1 ? "" : "s") + " \u00b7 " + (e.sale.open ? "taking orders" : "closed") })]) : null,
+        el("div", {}, [el("span", { class: "sf-k", text: "Money" }),
+          el("span", { class: "cd-val", text: money.length ? "In " + fmtVnd(mIn) + " \u00b7 out " + fmtVnd(mOut) + " \u00b7 left " + fmtVnd(mIn - mOut) : "Nothing logged for it yet \u2014 log costs under \u201c" + line + "\u201d." })])
+      ]),
+      evs.length > 1 ? el("p", { class: "cd-then", text: "Then: " + evs.slice(1, 3).map((x) => x.name + " (" + days(TODAY, x.date) + " days)").join(" \u00b7 ") }) : null
+    );
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Admins: is everything that runs in the background still running?
+   * ------------------------------------------------------------------ */
+  function ago(iso) {
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 2) return "just now";
+    if (m < 60) return m + " min ago";
+    if (m < 48 * 60) return Math.round(m / 60) + " h ago";
+    return Math.round(m / 1440) + " days ago";
+  }
+  function renderSystem() {
+    const box = $("system");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && SYS);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    const J = SYS.jobs || {};
+    const rows = [
+      ["Notifications", "every 15 min", J.push && J.push.at, 1, J.push],
+      ["GitHub backup job", "every 15 min, laptop off too", J.push && J.push.githubAt, 3, J.push, "gh"],
+      ["Instant announcements", "Peter\u2019s laptop", J.announce && J.announce.at, 0.5, J.announce, "laptop"],
+      ["Finance sheet sync", "hourly", J.finance && J.finance.at, 6, J.finance],
+      ["Nightly backup", "2am, Peter\u2019s laptop", J.backup && J.backup.at, 50, J.backup],
+      ["9pm chat wrap", "Peter\u2019s laptop", J.chatwrap && J.chatwrap.at, 50, J.chatwrap]
+    ].map(([label, when, at, hours, j, kind]) => {
+      const age = at ? (Date.now() - new Date(at).getTime()) / 36e5 : null;
+      let state, text;
+      if (!at) { state = "grey"; text = "hasn\u2019t checked in yet"; }
+      else if (j && j.ok === null && kind !== "gh") { state = "amber"; text = j.msg || "waiting"; }
+      else if (j && j.ok === false && kind !== "gh") { state = "red"; text = "failing: " + (j.msg || "") + " (" + ago(at) + ")"; }
+      else if (age > hours) { state = kind === "laptop" ? "amber" : "red"; text = "last ran " + ago(at) + (kind === "laptop" ? " \u2014 laptop off or asleep; GitHub covers it" : ""); }
+      else { state = "green"; text = "ran " + ago(at) + (j && j.msg && kind !== "gh" ? " \u00b7 " + j.msg : ""); }
+      return { label, when, state, text };
+    });
+    const bad = rows.filter((r) => r.state === "red").length;
+    const wasOpen = box.querySelector("details") ? box.querySelector("details").open : bad > 0;
+    box.replaceChildren(el("details", { open: wasOpen || bad > 0 }, [
+      el("summary", {}, [el("b", { text: bad ? "\u26a0\ufe0f " + bad + " background job" + (bad === 1 ? "" : "s") + " need" + (bad === 1 ? "s" : "") + " attention" : "\u2699\ufe0f Background jobs: all running" })]),
+      el("div", { class: "wo-list" }, rows.map((r) => el("div", { class: "sys-row" }, [
+        el("span", { class: "sys-dot " + r.state, "aria-hidden": "true" }),
+        el("div", {}, [el("b", { text: r.label }), el("span", { class: "sys-when", text: " \u00b7 " + r.when })]),
+        el("span", { class: "sys-text " + r.state, text: r.text })
+      ])))
+    ]));
+  }
+
   function renderMe() {
     const box = $("me");
     if (!box || !SESSION) return;
@@ -957,6 +1144,7 @@
 
     const need = meNeeds().length;
     box.replaceChildren(
+      welcomeCard(),
       el("div", { class: "me-head" }, [
         avatar(me, true),
         el("div", { class: "me-id" }, [el("h2", { class: "sec", text: "Hi " + p.name + (officer ? " \ud83d\udc6e" : "") }),
@@ -969,8 +1157,8 @@
       el("p", { class: "me-need" + (need ? " hot" : "") }, [document.createTextNode(need
         ? (need === 1 ? "1 thing needs" : need + " things need") + " you soon \u2014 at the top of the lists below."
         : "Nothing urgent. Nice.")]),
-      sec("My jobs", jobs.length ? String(jobs.length) + " open" : "", jobCards.length ? [el("div", { class: "tasklist" }, jobCards)]
-        : [el("p", { class: "viz-none", text: "No open jobs. Ask Bach or Thy for one, or take one from the chat." })]),
+      el("div", { id: "me-jobs" }, [sec("My jobs", jobs.length ? String(jobs.length) + " open" : "", jobCards.length ? [el("div", { class: "tasklist" }, jobCards)]
+        : [el("p", { class: "viz-none", text: "No open jobs. Ask Bach or Thy for one, or take one from the chat." })])]),
       actions.length ? sec("From meetings", "not on the jobs list yet", [el("ul", { class: "me-list" }, actions.map(({ m, d }) =>
         el("li", {}, [el("b", { text: d.text }), document.createTextNode(" \u00b7 " + pretty(m.date) + " meeting" + (d.due ? " \u00b7 by " + relDay(d.due) : ""))])))]) : null,
       sec("Money", owed.length ? "owed to you: " + fmtVnd(owed.reduce((n, m) => n + m.amount, 0)) : "", [
