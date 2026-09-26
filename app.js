@@ -824,9 +824,18 @@
         el("ul", { class: "an-list", id: "an-list" }));
     }
 
+    /* Sent ones tidy themselves away an hour after sending, and x hides one
+       now. Hiding is just for you, on this device - it never unsends. Ones
+       still sending always stay, so you can see they went. */
     const list = $("an-list");
     list.replaceChildren();
-    (ANNOUNCES || []).forEach((a) => {
+    clearTimeout(renderAnnounce.timer);
+    const hidden = anHidden();
+    const shown = (ANNOUNCES || []).filter((a) =>
+      !hidden.includes(a.id) && !(a.status === "sent" && Date.now() - a.at.getTime() > AN_KEEP));
+    const nextGone = Math.min(...shown.filter((a) => a.status === "sent").map((a) => a.at.getTime() + AN_KEEP - Date.now()));
+    if (isFinite(nextGone)) renderAnnounce.timer = setTimeout(renderAnnounce, Math.max(1000, nextGone + 500));
+    shown.forEach((a) => {
       const nudge = a.kind === "nudge";
       const toName = nudge ? (PEOPLE[a.to] ? PEOPLE[a.to].name : a.to) : "";
       const state = a.status !== "sent" ? "Sending\u2026"
@@ -838,9 +847,20 @@
         el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by)
           + (nudge ? " \ud83d\udc49 nudged " + toName : "") + " \u00b7 " + when }),
         el("span", { class: "an-t", text: a.text }),
-        el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state })
+        el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state }),
+        a.status === "sent" ? el("button", { class: "an-x", type: "button", "aria-label": "Hide this", title: "Hide this",
+          text: "\u00d7", onclick: () => { anHide(a.id); renderAnnounce(); } }) : null
       ]));
     });
+  }
+  const AN_KEEP = 60 * 60 * 1000;               // sent messages stay in the list for an hour
+  function anHidden() {
+    try { return JSON.parse(localStorage.getItem("cham-an-hidden") || "[]"); } catch (e) { return anHidden.mem || []; }
+  }
+  function anHide(id) {
+    const ids = anHidden().concat(id).slice(-50);
+    anHidden.mem = ids;
+    try { localStorage.setItem("cham-an-hidden", JSON.stringify(ids)); } catch (e) { /* private mode: this visit only */ }
   }
 
   function renderUpdateAdmin() {

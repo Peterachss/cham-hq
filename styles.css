@@ -1014,3 +1014,11 @@
   .au-pw { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0 2px; }
   .au-pw input { flex: 1 1 170px; }
   .au-note.ok { color: var(--jade); }
+
+  .an-item { grid-template-columns: 1fr auto auto; }
+  .an-x {
+    grid-column: 3; grid-row: 1 / span 2; align-self: center;
+    appearance: none; border: 0; background: none; cursor: pointer;
+    color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+  }
+  .an-x:hover { color: var(--ink); background: var(--card); }
