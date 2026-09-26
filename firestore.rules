@@ -74,6 +74,18 @@ service cloud.firestore {
                         && resource.data.status == 'new');
     }
 
+    // A device's push subscription. You can only file one under your own
+    // email. Nobody reads them from the site: only the sender does, and it
+    // runs with the service account, which the rules do not apply to.
+    match /pushSubs/{subId} {
+      allow create, update: if isMember()
+                            && request.resource.data.email == email()
+                            && request.resource.data.endpoint is string
+                            && request.resource.data.endpoint.matches('https://.+');
+      allow delete: if isMember() && resource.data.email == email();
+      allow read:   if false;
+    }
+
     match /tasks/{taskId} {
       allow read:            if isMember();
       allow create, delete:  if isAdmin();

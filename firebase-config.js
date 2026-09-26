@@ -17,3 +17,7 @@ window.CHAM_FIREBASE = {
   messagingSenderId: "120151131910",
   appId:             "1:120151131910:web:aeaf5e151b85bd8a654087"
 };
+
+/* Web Push. This is the PUBLIC half of the key pair and is meant to sit in
+   public code - the private half lives only on the machine that sends. */
+window.CHAM_PUSH_KEY = "BG_kIRIgIVQR86Ie8Dg2OgcqCv0Ld4ladif3WFRXY26aZdsyFfsnkcyD-IDhvRcmgl-C9WrHEey4zEVLSzycbG8";

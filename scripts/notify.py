@@ -201,8 +201,16 @@ def assignments(db, who, mail, dry):
 
 
 # --------------------------------------------------------------------- digest
-def digest(db, who, mail):
-    today = dt.date.today()
+def digest(db, who, mail, dry=False):
+    today = dt.datetime.now(dt.timezone(dt.timedelta(hours=7))).date()
+    # once a day however often this runs: the schedule is every 15 minutes
+    meta_ref = db.collection("meta").document("email")
+    meta = meta_ref.get().to_dict() or {}
+    if meta.get("digestDate") == today.isoformat():
+        print("digest: already sent today")
+        return
+    if not dry:
+        meta_ref.set({**meta, "digestDate": today.isoformat()})
     limit = today + dt.timedelta(days=HORIZON)
     buckets = {}
 
@@ -285,7 +293,7 @@ def main():
     with Mailer(args.dry_run) as mail:
         assignments(db, who, mail, args.dry_run)
         if args.digest:
-            digest(db, who, mail)
+            digest(db, who, mail, args.dry_run)
         print(f"done, {mail.sent} email(s)")
 
 

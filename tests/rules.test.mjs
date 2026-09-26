@@ -34,6 +34,7 @@ async function seed() {
       status: "logged", createdBy: EMILY, receipt: "" });
     await setDoc(doc(db, "photos", "p-emily"), { who: "emily", data: "x", date: "2026-09-26" });
     await setDoc(doc(db, "updates", "u-emily"), { who: "emily", text: "hi", date: "2026-09-26" });
+    await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
   });
 }
 
@@ -96,6 +97,15 @@ const cases = [
   ["member deletes own new line",            true,  () => deleteDoc(doc(as(EMILY), "expenses/e-emily"))],
   ["member cannot delete a logged line",     false, () => deleteDoc(doc(as(EMILY), "expenses/e-logged"))],
   ["finance deletes any line",               true,  () => deleteDoc(doc(as(THUAN), "expenses/e-logged"))],
+
+  // ---------------------------------------------------------------- push
+  ["member saves own push subscription",     true,  () => setDoc(doc(as(EMILY), "pushSubs/s1"), { email: EMILY, endpoint: "https://fcm.googleapis.com/x", keys: { p256dh: "a", auth: "b" } })],
+  ["cannot file a subscription as someone",  false, () => setDoc(doc(as(EMILY), "pushSubs/s2"), { email: PETER, endpoint: "https://fcm.googleapis.com/x", keys: {} })],
+  ["subscription endpoint must be https",    false, () => setDoc(doc(as(EMILY), "pushSubs/s3"), { email: EMILY, endpoint: "http://evil.example/x", keys: {} })],
+  ["nobody can read subscriptions",          false, () => getDoc(doc(as(PETER), "pushSubs/s-emily"))],
+  ["member removes own subscription",        true,  () => deleteDoc(doc(as(EMILY), "pushSubs/s-emily"))],
+  ["cannot remove someone else's",           false, () => deleteDoc(doc(as(BACH), "pushSubs/s-emily"))],
+  ["stranger cannot save a subscription",    false, () => setDoc(doc(as(STRANGER), "pushSubs/s4"), { email: STRANGER, endpoint: "https://fcm.googleapis.com/x", keys: {} })],
 ];
 
 let failed = 0;

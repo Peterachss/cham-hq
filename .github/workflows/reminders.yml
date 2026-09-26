@@ -1,20 +1,22 @@
-name: Chạm emails
+name: Chạm notifications
 
-# Hourly, so a job handed out reaches the person the same morning rather
-# than the next day. The 00:00 UTC run is 07:00 in Vietnam and is the one
-# that also sends the daily digest.
+# Every 15 minutes. This is the backup for the scheduled task on Peter's PC,
+# so notifications keep going out when the laptop is shut. Both write what
+# they have sent to the database, so running both never sends anything twice.
 #
-# GitHub's scheduler runs late when it is busy; a run drifting by ten or
-# twenty minutes is normal and nothing to fix.
+# Nothing happens until the secrets exist - each script checks, says what is
+# missing, and exits cleanly rather than failing every quarter of an hour.
+#
+#   Push  : FIREBASE_SERVICE_ACCOUNT, VAPID_PRIVATE_KEY
+#   Email : FIREBASE_SERVICE_ACCOUNT, GMAIL_USER, GMAIL_APP_PASSWORD
+#
+# GitHub's scheduler runs late when it is busy. Ten or twenty minutes of
+# drift is normal and nothing to fix.
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
-      digest:
-        description: "Also send the morning digest"
-        type: boolean
-        default: false
       dry_run:
         description: "Print what would be sent, send nothing"
         type: boolean
@@ -23,6 +25,7 @@ on:
 jobs:
   send:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
@@ -31,25 +34,28 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install --quiet google-cloud-firestore
+        run: pip install --quiet google-cloud-firestore pywebpush
 
-      - name: Work out which run this is
+      - name: Which run is this
         id: mode
         run: |
-          FLAGS=""
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 00:00 UTC is 07:00 Asia/Ho_Chi_Minh
-            if [ "$(date -u +%H)" = "00" ]; then FLAGS="--digest"; fi
-          else
-            if [ "${{ inputs.digest }}" = "true" ]; then FLAGS="--digest"; fi
-            if [ "${{ inputs.dry_run }}" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
-          fi
-          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
-          echo "running with: ${FLAGS:-assignments only}"
+          DRY=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then DRY="--dry-run"; fi
+          # 00:xx UTC is 07:xx in Vietnam; the digest itself makes sure it only goes once a day
+          DIGEST=""
+          if [ "$(date -u +%H)" = "00" ]; then DIGEST="--digest"; fi
+          echo "dry=$DRY" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Send
+      - name: Push notifications
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: python scripts/push.py ${{ steps.mode.outputs.dry }}
+
+      - name: Email
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python scripts/notify.py ${{ steps.mode.outputs.flags }}
+        run: python scripts/notify.py ${{ steps.mode.outputs.digest }} ${{ steps.mode.outputs.dry }}

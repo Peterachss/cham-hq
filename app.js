@@ -146,6 +146,7 @@
     },
     setSession(s) {
       SESSION = s;
+      pushState = null; pushSavedThisSession = false;
       /* Panels are built once and then left alone, so they have to be torn
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
@@ -180,6 +181,171 @@
       date: today, who: entry.who, text: entry.text,
       key: entry.key === true, auto: true, event: entry.event, ref: entry.ref || null
     }]).catch((err) => console.warn("Ch\u1ea1m HQ: activity line not saved", err));
+  }
+
+  /* ------------------------------------------------------------------ *
+   * notifications
+   *
+   * Web Push, the browsers' own system - free, no app store, nothing to
+   * install. What it can and cannot do depends on the device, and every
+   * dead end below says so plainly instead of a button that does nothing:
+   *   - Android and computers: works in Chrome, Edge and Firefox.
+   *   - iPhone: ONLY from the Home Screen app (iOS 16.4 or later). Safari
+   *     in a normal tab has no push at all, so the button would be a lie.
+   * ------------------------------------------------------------------ */
+  const PUSH_OK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const IS_STANDALONE = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+    || navigator.standalone === true;
+  let pushState = null;      // null until checked; then "on" | "off" | "denied" | "ios" | "none"
+  let pushChecking = false;
+  let pushSavedThisSession = false;
+
+  function b64uToU8(b64u) {
+    const pad = "=".repeat((4 - (b64u.length % 4)) % 4);
+    const raw = atob((b64u + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  }
+  function deviceLabel() {
+    const u = navigator.userAgent;
+    const os = /iPhone|iPad|iPod/.test(u) ? "iPhone" : /Android/.test(u) ? "Android"
+      : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "Other";
+    const br = /Edg\//.test(u) ? "Edge" : /Firefox\//.test(u) ? "Firefox"
+      : /Chrome\//.test(u) ? "Chrome" : /Safari\//.test(u) ? "Safari" : "";
+    return os + (br ? " \u00b7 " + br : "") + (IS_STANDALONE ? " \u00b7 app" : "");
+  }
+  const dismissedUntil = () => { try { return Number(localStorage.getItem("cham-notify-later") || 0); } catch (e) { return 0; } };
+  const dismissForAWeek = () => { try { localStorage.setItem("cham-notify-later", String(Date.now() + 7 * 864e5)); } catch (e) {} };
+
+  async function checkPush() {
+    if (pushChecking) return;
+    pushChecking = true;
+    try {
+      if (!PUSH_OK) { pushState = IS_IOS && !IS_STANDALONE ? "ios" : "none"; return; }
+      if (Notification.permission === "denied") { pushState = "denied"; return; }
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      pushState = sub && Notification.permission === "granted" ? "on" : "off";
+      /* keep this device's subscription on file for whoever is signed in */
+      if (pushState === "on" && SESSION && window.ChamLive && !pushSavedThisSession) {
+        pushSavedThisSession = true;
+        window.ChamLive.savePushSub(sub.toJSON(), deviceLabel()).catch(() => { pushSavedThisSession = false; });
+      }
+    } catch (err) {
+      console.warn("Ch\u1ea1m HQ: could not check notifications", err);
+      pushState = "none";
+    } finally {
+      pushChecking = false;
+      drawNotify();
+    }
+  }
+
+  async function turnPushOn(btn, msg) {
+    btn.disabled = true; btn.textContent = "Asking\u2026";
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { pushState = perm === "denied" ? "denied" : "off"; drawNotify(); return; }
+      if (!navigator.serviceWorker.controller) await navigator.serviceWorker.register("sw.js");
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true, applicationServerKey: b64uToU8(window.CHAM_PUSH_KEY)
+      });
+      await window.ChamLive.savePushSub(sub.toJSON(), deviceLabel());
+      pushSavedThisSession = true;
+      pushState = "on";
+      /* a local one, straight away, so they know this device can show them */
+      await reg.showNotification("Notifications are on", {
+        body: "You\u2019ll hear about new jobs, anything due, and a round-up at 9pm.",
+        icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "cham-on"
+      });
+      drawNotify();
+    } catch (err) {
+      console.error("Ch\u1ea1m HQ: turning notifications on failed", err);
+      btn.disabled = false; btn.textContent = "Turn on notifications";
+      msg.textContent = "That didn\u2019t work on this browser (" + (err.name || "error") + "). Try Chrome, or on iPhone the Home Screen app.";
+      msg.classList.add("bad");
+    }
+  }
+
+  async function turnPushOff() {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      if (sub) {
+        await window.ChamLive.deletePushSub(sub.endpoint).catch(() => {});
+        await sub.unsubscribe();
+      }
+    } catch (err) { console.warn(err); }
+    pushState = "off";
+    dismissForAWeek();
+    drawNotify();
+  }
+
+  function renderNotify() {
+    if (!SESSION || !window.ChamLive) { const b = $("notify-bar"); if (b) b.hidden = true; return; }
+    if (pushState === null) { checkPush(); return; }
+    drawNotify();
+  }
+
+  function drawNotify() {
+    const bar = $("notify-bar");
+    if (!bar) return;
+    bar.replaceChildren();
+    bar.className = "";
+    if (!SESSION || !window.ChamLive || pushState === null) { bar.hidden = true; return; }
+
+    const msg = el("span", { class: "nb-msg" });
+
+    if (pushState === "on") {
+      bar.className = "nb nb-on";
+      bar.append(
+        el("span", { class: "nb-dot", "aria-hidden": "true" }),
+        el("span", { class: "nb-text", text: "Notifications on for this device" }),
+        el("button", { class: "nb-link", type: "button", text: "Turn off", onclick: turnPushOff })
+      );
+      bar.hidden = false;
+      return;
+    }
+
+    if (Date.now() < dismissedUntil()) { bar.hidden = true; return; }
+
+    const later = el("button", { class: "nb-link", type: "button", text: "Not now",
+      onclick: () => { dismissForAWeek(); bar.hidden = true; } });
+
+    bar.className = "nb";
+    if (pushState === "ios") {
+      bar.append(el("div", { class: "nb-body" }, [
+        el("b", { text: "Want notifications on your iPhone?" }),
+        el("span", { text: "Apple only allows them from the Home Screen app. Tap Share \u2192 Add to Home Screen, open Ch\u1ea1m HQ from your Home Screen, sign in, and the button will be here." })
+      ]), later);
+    } else if (pushState === "denied") {
+      bar.append(el("div", { class: "nb-body" }, [
+        el("b", { text: "Notifications are blocked for this site" }),
+        el("span", { text: "Click the padlock next to the web address, set Notifications to Allow, then reload." })
+      ]), later);
+    } else if (pushState === "none") {
+      bar.append(el("div", { class: "nb-body" }, [
+        el("b", { text: "This browser can\u2019t do notifications" }),
+        el("span", { text: "Chrome, Edge or Firefox can \u2014 or on iPhone, the Home Screen app." })
+      ]), later);
+    } else {
+      const go = el("button", { class: "au-go", type: "button", text: "Turn on notifications" });
+      go.addEventListener("click", () => turnPushOn(go, msg));
+      bar.append(el("div", { class: "nb-body" }, [
+        el("b", { text: "Get told, instead of checking" }),
+        el("span", { text: "When you\u2019re given a job, when something\u2019s due, and a round-up of the day at 9pm." }),
+        msg
+      ]), el("div", { class: "nb-btns" }, [go, later]));
+    }
+    bar.hidden = false;
+  }
+
+  if (PUSH_OK) {
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data && e.data.type === "push-resubscribe") { pushSavedThisSession = false; pushState = null; renderNotify(); }
+    });
   }
 
   /** can the signed-in person move this particular job? */
@@ -224,6 +390,9 @@
   });
   function setView(v) {
     S.view = v;
+    if (location.hash.slice(1) !== v) {
+      try { history.replaceState(null, "", location.pathname + location.search + (v === "updates" ? "" : "#" + v)); } catch (e) {}
+    }
     VIEWS.forEach((n) => {
       $("tab-"+n).setAttribute("aria-selected", String(n === v));
       $("view-"+n).hidden = n !== v;
@@ -236,6 +405,7 @@
    * ------------------------------------------------------------------ */
   function render() {
     renderGlance();
+    renderNotify();
     if (S.view === "updates") { renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
@@ -1842,11 +2012,16 @@
     }
   })();
 
-  if ("serviceWorker" in navigator && location.protocol === "https:") {
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch((e) => console.warn("sw:", e));
     });
   }
 
-  setView("updates");
+  const fromLink = location.hash.slice(1);
+  setView(VIEWS.includes(fromLink) ? fromLink : "updates");
+  window.addEventListener("hashchange", () => {
+    const h = location.hash.slice(1);
+    if (VIEWS.includes(h) && h !== S.view) setView(h);
+  });
 })();

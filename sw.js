@@ -9,10 +9,10 @@
    amount of reloading helped. Offline still works: every response is copied
    into the cache on the way past, and the cache answers when the network
    cannot. */
-const CACHE = "cham-hq-v16";
+const CACHE = "cham-hq-v17";
 const SHELL = [
-  "./", "./index.html", "./styles.css?v=15", "./app.js?v=15",
-  "./firebase-config.js?v=15", "./live.js?v=15", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css?v=16", "./app.js?v=16",
+  "./firebase-config.js?v=16", "./live.js?v=16", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png"
 ];
 
@@ -26,6 +26,49 @@ self.addEventListener("activate", (e) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * notifications
+ *
+ * Every push must show something - iPhones cut a site off from push if it
+ * receives one and stays silent - so a message that fails to parse still
+ * turns into a plain notification rather than nothing.
+ * ------------------------------------------------------------------ */
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; }
+  catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  const title = d.title || "Ch\u1ea1m HQ";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+    tag: d.tag || undefined,
+    renotify: Boolean(d.tag),
+    data: { url: d.url || "./" }
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) {
+      if (w.url.startsWith(self.registration.scope) && "focus" in w) {
+        if ("navigate" in w) w.navigate(target);
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  }));
+});
+
+/* Browsers occasionally swap a subscription out from under us. Tell the
+   page so it can save the new one next time it opens. */
+self.addEventListener("pushsubscriptionchange", (e) => {
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then((wins) =>
+    wins.forEach((w) => w.postMessage({ type: "push-resubscribe" }))));
 });
 
 self.addEventListener("fetch", (e) => {

@@ -33,8 +33,15 @@ if (!CONFIGURED) {
   } = auth_;
   const {
     getFirestore, collection, doc, getDoc, onSnapshot,
-    addDoc, updateDoc, deleteDoc, serverTimestamp
+    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp
   } = store_;
+
+  /* a subscription's document id is a hash of its endpoint, so the same
+     phone subscribing twice overwrites itself rather than doubling up */
+  async function subId(endpoint) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+  }
 
   // app.js loads data.json before it publishes the bridge, so wait for it.
   await (async function whenReady() {
@@ -362,7 +369,22 @@ if (!CONFIGURED) {
         await updateDoc(doc(db, "expenses", id), patch);
       }
     },
-    async deleteMoney(id) { await deleteDoc(doc(db, "expenses", id)); }
+    async deleteMoney(id) { await deleteDoc(doc(db, "expenses", id)); },
+
+    async savePushSub(sub, device) {
+      const me = auth.currentUser;
+      if (!me) throw new Error("not signed in");
+      await setDoc(doc(db, "pushSubs", await subId(sub.endpoint)), {
+        email: me.email.toLowerCase(),
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+        device: device || "",
+        createdAt: serverTimestamp()
+      });
+    },
+    async deletePushSub(endpoint) {
+      await deleteDoc(doc(db, "pushSubs", await subId(endpoint)));
+    }
   };
 
   showSignedOut();
