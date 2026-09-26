@@ -2423,11 +2423,22 @@
     const top = document.querySelector("header.top");
     if (top && !renderMascot.watching) {
       renderMascot.watching = true;
-      const fit = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
-      fit();
+      const fit = () => {
+        const R = document.documentElement.style;
+        R.setProperty("--top-h", top.offsetHeight + "px");
+        /* on wider screens she stands right under the "chat read to" date */
+        const st = $("stamp");
+        if (st && st.offsetParent) {
+          const b = st.getBoundingClientRect();
+          R.setProperty("--stamp-b", Math.round(b.bottom) + "px");
+          R.setProperty("--stamp-r", Math.max(6, Math.round(document.documentElement.clientWidth - b.right)) + "px");
+        }
+      };
+      renderMascot.fit = fit;
+      window.addEventListener("resize", fit);
       if (window.ResizeObserver) new ResizeObserver(fit).observe(top);
-      else window.addEventListener("resize", fit);
     }
+    if (renderMascot.fit) renderMascot.fit();   // the date's width changes once data loads
     /* speak up once per visit, a moment after the page settles, then go quiet */
     if (!mascotAutoDone && sessionKnown) {
       mascotAutoDone = true;

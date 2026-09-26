@@ -1004,6 +1004,7 @@
     .mascot-bubble { bottom: auto; right: -2px; }
     .mascot-bubble::after { right: 20px; }
   }
-  @media (min-width: 1300px) {
-    .mascot { right: max(12px, calc((100vw - 1060px) / 4 - 46px)); }
+  @media (min-width: 781px) {
+    .mascot { top: calc(var(--stamp-b, 50px) + 4px); right: var(--stamp-r, 12px); }
+    .mascot-btn { width: 75px; height: 150px; }   /* short enough to clear the notice's "Not now" */
   }
