@@ -153,6 +153,7 @@
     setSession(s) {
       SESSION = s;
       pushState = null; pushSavedThisSession = false;
+      if (!s) closeMoneySheet();
       /* Panels are built once and then left alone, so they have to be torn
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
@@ -161,6 +162,7 @@
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
+      if (s && pendingLog) setTimeout(openMoneySheet, 0);
     },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
@@ -413,6 +415,7 @@
   function render() {
     renderGlance();
     renderNotify();
+    renderFab();
     if (S.view === "updates") { renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
@@ -1820,9 +1823,10 @@
           text: (kind === "out" ? "Spent " : "Brought in ") + "**" + fmtVnd(n) + "** \u2014 " + loggedDesc });
         amount.value = ""; desc.value = ""; notes.value = ""; line.value = ""; receipt.value = "";
         owedBox.checked = false; amountSeen.textContent = ""; more.open = false; date.value = today;
-        msg.textContent = "Logged " + fmtVnd(n) + ".";
-        msg.classList.add("good");
-        amount.focus();
+        box._pickLine && box._pickLine("");
+        msg.textContent = "";
+        closeMoneySheet();
+        toast("Logged " + fmtVnd(n) + (kind === "out" ? " out" : " in") + " \u2014 Thuan will see it.");
       } catch (err) {
         msg.textContent = "Did not save. " + (err.code || err.message);
         msg.classList.add("bad");
@@ -1830,6 +1834,28 @@
       go.disabled = false; go.textContent = "Log it";
     });
     [amount, desc].forEach((i) => i.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); }));
+
+    /* the events people have logged to most recently, one tap each - most
+       entries during a sale belong to that sale */
+    const chips = el("div", { class: "mf-chips", hidden: true });
+    const pickLine = (name) => {
+      line.value = name;
+      chips.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.name === name)));
+    };
+    box._pickLine = pickLine;
+    box._refresh = () => {
+      const recent = [];
+      (LEDGER || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+        .forEach((m) => { if (m.budgetLine && !recent.includes(m.budgetLine) && m.category !== "Teaching") recent.push(m.budgetLine); });
+      chips.replaceChildren(el("span", { class: "mf-k", text: "For" }));
+      recent.slice(0, 4).forEach((name) => chips.appendChild(el("button", {
+        class: "chipbtn plain", type: "button", "data-name": name, "aria-pressed": String(line.value === name), text: name,
+        onclick: () => pickLine(line.value === name ? "" : name)
+      })));
+      chips.hidden = recent.length === 0;
+    };
+    line.addEventListener("input", () => chips.querySelectorAll("button")
+      .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.name === line.value))));
 
     box.classList.add("mform");
     box.append(
@@ -1840,6 +1866,7 @@
         ]),
         desc, cat
       ]),
+      chips,
       el("div", { class: "mf-sub" }, [
         amountSeen,
         el("span", { class: "mf-who" }, [payerLabel, payer, owedLabel])
@@ -2065,13 +2092,90 @@
     if (table) box.append(table);
   }
 
+  /* ------------------------------------------------------------------ *
+   * logging money from anywhere
+   *
+   * The form used to sit halfway down the Money tab, under the charts. Now
+   * it lives in a sheet that opens over whatever you are looking at: the
+   * + Log money button on every tab, the button on the Money tab, the
+   * app icon's shortcut, or a #log link pinned in the chat.
+   * ------------------------------------------------------------------ */
+  let pendingLog = false;
+  let lastFocus = null;
+
+  function openMoneySheet() {
+    const dlg = $("money-sheet");
+    if (!dlg) return;
+    if (!SESSION || !window.ChamLive) { pendingLog = true; return; }
+    pendingLog = false;
+    renderMoneyAdd();
+    const box = $("money-add");
+    if (box._refresh) box._refresh();
+    lastFocus = document.activeElement;
+    if (!dlg.open) { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", ""); }
+    renderFab();
+    const amt = box.querySelector(".mf-amount");
+    if (amt) setTimeout(() => amt.focus(), 60);
+  }
+  function closeMoneySheet() {
+    const dlg = $("money-sheet");
+    if (dlg && dlg.open) { if (dlg.close) dlg.close(); else dlg.removeAttribute("open"); }
+  }
+  (function sheetWiring() {
+    const dlg = $("money-sheet");
+    if (!dlg) return;
+    $("money-sheet-x").addEventListener("click", closeMoneySheet);
+    /* a tap on the dim backdrop closes it; a tap inside the form does not */
+    dlg.addEventListener("click", (e) => { if (e.target === dlg) closeMoneySheet(); });
+    dlg.addEventListener("close", () => {
+      renderFab();
+      if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+    });
+    $("log-fab").addEventListener("click", openMoneySheet);
+  })();
+
+  function renderFab() {
+    const fab = $("log-fab");
+    if (!fab) return;
+    /* not hidden while the sheet is open: the sheet's backdrop already covers
+       it, and hiding it meant waiting on a "close" event some browsers are
+       slow to fire - which left the button gone after logging */
+    fab.hidden = !(SESSION && window.ChamLive);
+    const inst = $("install");
+    document.body.classList.toggle("has-install", Boolean(inst && !inst.hidden));
+    document.body.classList.toggle("has-fab", !fab.hidden);
+  }
+
+  let toastTimer = null;
+  function toast(text) {
+    const t = $("toast");
+    if (!t) return;
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  }
+
+  function renderMoneyCta() {
+    const box = $("money-cta");
+    if (!box) return;
+    box.replaceChildren();
+    if (!SESSION || !window.ChamLive) return;
+    box.appendChild(el("div", { class: "mcta" }, [
+      el("button", { class: "au-go mcta-go", type: "button", onclick: openMoneySheet }, [
+        el("span", { "aria-hidden": "true", text: "+ " }), document.createTextNode("Log money")
+      ]),
+      el("span", { class: "mcta-sub", text: "Spent or took money for Ch\u1ea1m? Log it the same day. The + Log money button is on every tab too." })
+    ]));
+  }
+
   function renderMoney() {
     const list = $("money-list");
     const tiles = $("money-tiles");
     const chart = $("money-chart");
     list.replaceChildren(); tiles.replaceChildren(); chart.replaceChildren();
 
-    renderMoneyAdd();
+    renderMoneyCta();
 
     if (!SESSION) {
       $("money-goal").replaceChildren();
@@ -2294,9 +2398,11 @@
   }
 
   const fromLink = location.hash.slice(1);
-  setView(VIEWS.includes(fromLink) ? fromLink : "updates");
+  if (fromLink === "log") { setView("money"); pendingLog = true; openMoneySheet(); }
+  else setView(VIEWS.includes(fromLink) ? fromLink : "updates");
   window.addEventListener("hashchange", () => {
     const h = location.hash.slice(1);
+    if (h === "log") { setView("money"); openMoneySheet(); return; }
     if (VIEWS.includes(h) && h !== S.view) setView(h);
   });
 })();
