@@ -45,6 +45,15 @@ SITE = "https://peterachss.github.io/cham-hq/"
 HORIZON = 7  # days ahead the digest warns about
 
 
+NEEDED = ("FIREBASE_SERVICE_ACCOUNT", "GMAIL_USER", "GMAIL_APP_PASSWORD")
+
+
+def configured():
+    """Until the three secrets exist this does nothing and exits happy, so
+    an hourly schedule does not fill the owner's inbox with red crosses."""
+    return [n for n in NEEDED if not os.environ.get(n, "").strip()]
+
+
 def env(name):
     v = os.environ.get(name, "").strip()
     if not v:
@@ -256,6 +265,13 @@ def main():
     ap.add_argument("--catch-up", action="store_true",
                     help="mark everything already handed out as announced, without emailing")
     args = ap.parse_args()
+
+    missing = configured()
+    if missing and not (args.catch_up and missing == ["GMAIL_USER", "GMAIL_APP_PASSWORD"]):
+        print("Not set up yet - still missing: " + ", ".join(missing))
+        print("Add them under Settings -> Secrets and variables -> Actions.")
+        print("Doing nothing, on purpose.")
+        return
 
     db = db_client()
 
