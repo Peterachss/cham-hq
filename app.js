@@ -2562,6 +2562,34 @@
     });
   }
 
+  /* A phone keeps the app open in the background for days, so it never
+     sees a new version. Whenever it comes back to the front, ask GitHub
+     which version is current and reload if it is newer - but only when
+     nobody is halfway through typing something. */
+  (function stayCurrent() {
+    const mine = (document.querySelector('script[src*="app.js"]') || {}).src || "";
+    const ver = (mine.match(/[?&]v=(\d+)/) || [])[1];
+    if (!ver) return;
+    let last = Date.now();
+    async function check() {
+      if (document.visibilityState !== "visible" || Date.now() - last < 60000) return;
+      last = Date.now();
+      try {
+        const html = await (await fetch("./?fresh=" + last, { cache: "no-store" })).text();
+        const live = (html.match(/app\.js\?v=(\d+)/) || [])[1];
+        if (!live || live === ver) return;
+        const a = document.activeElement;
+        const busy = (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value)
+          || ($("money-sheet") && $("money-sheet").open);
+        if (busy) { last = 0; return; }   // try again next time
+        location.reload();
+      } catch (e) { /* offline - fine */ }
+    }
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    window.addEventListener("pageshow", (e) => { if (e.persisted) { last = 0; check(); } });
+  })();
+
   const fromLink = location.hash.slice(1);
   if (fromLink === "log") { setView("money"); pendingLog = true; openMoneySheet(); }
   else setView(VIEWS.includes(fromLink) ? fromLink : "updates");

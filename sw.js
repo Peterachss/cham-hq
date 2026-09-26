@@ -9,10 +9,10 @@
    amount of reloading helped. Offline still works: every response is copied
    into the cache on the way past, and the cache answers when the network
    cannot. */
-const CACHE = "cham-hq-v26";
+const CACHE = "cham-hq-v27";
 const SHELL = [
-  "./", "./index.html", "./styles.css?v=25", "./app.js?v=25",
-  "./firebase-config.js?v=25", "./live.js?v=25", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css?v=26", "./app.js?v=26",
+  "./firebase-config.js?v=26", "./live.js?v=26", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png"
 ];
 
@@ -93,8 +93,14 @@ self.addEventListener("fetch", (e) => {
   }
 
   // Everything else: try the network, keep a copy, fall back to it offline.
+  // GitHub Pages tells browsers to keep files for 10 minutes, so a plain
+  // fetch can quietly come back with the old page. "no-cache" asks GitHub
+  // whether it changed first - a tiny request when nothing has.
+  const fresh = req.mode === "navigate"
+    ? new Request(req.url, { cache: "no-cache", credentials: "same-origin" })
+    : new Request(req, { cache: "no-cache" });
   e.respondWith(
-    fetch(req)
+    fetch(fresh)
       .then((res) => {
         if (res && res.status === 200) {
           const copy = res.clone();
