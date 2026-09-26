@@ -103,6 +103,9 @@ def do_login(cfg):
         page.wait_for_timeout(4000)
         log("login: profile saved to " + PROFILE)
         ctx.close()
+    # remembered, so the 9pm run knows it is worth opening a browser at all
+    with open(os.path.join(HOME, "ig-signed-in"), "w", encoding="utf-8") as f:
+        f.write(dt.datetime.now().isoformat())
 
 
 def scrape(cfg, headless):
@@ -394,6 +397,11 @@ def main():
 
     if args.login:
         do_login(cfg)
+        return
+
+    if not os.path.exists(os.path.join(HOME, "ig-signed-in")):
+        # never signed in: don't pop a browser up on someone's screen every night
+        log("the bot account has never been signed in - run: python scripts/ig_wrap.py --login")
         return
 
     today = dt.datetime.now(dt.timezone(dt.timedelta(hours=7))).date().isoformat()
