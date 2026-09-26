@@ -153,6 +153,7 @@
     setSession(s) {
       SESSION = s;
       pushState = null; pushSavedThisSession = false;
+      mascotAutoDone = false; sessionKnown = true;
       if (!s) closeMoneySheet();
       /* Panels are built once and then left alone, so they have to be torn
          down when the person changes - otherwise signing in after somebody
@@ -416,6 +417,7 @@
     renderGlance();
     renderNotify();
     renderFab();
+    renderMascot();
     if (S.view === "updates") { renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
@@ -1083,6 +1085,7 @@
           try {
             await window.ChamLive.setStatus(t.id, k);
             if (k === "done") logActivity({ who: t.who, ref: t.id, event: "done", text: "Finished **" + t.title + "**" });
+            if (k === "done" && SESSION && t.who === SESSION.personKey) mascotSay("Nice one! \u201c" + t.title + "\u201d is done.");
             if (k === "blocked") logActivity({ who: t.who, ref: t.id, event: "stuck",
               text: "Stuck on **" + t.title + "**" + (t.note ? " \u2014 " + t.note : "") });
           }
@@ -2168,6 +2171,121 @@
       el("span", { class: "mcta-sub", text: "Spent or took money for Ch\u1ea1m? Log it the same day. The + Log money button is on every tab too." })
     ]));
   }
+
+  /* ------------------------------------------------------------------ *
+   * Chạm's bunny
+   *
+   * Says the one thing that matters most to whoever is looking, worked out
+   * from the real data: something overdue, something due, a wrap waiting,
+   * money for the sheet, money you are owed, how close the goal is. Tap it
+   * for the next thing. It speaks up by itself once per visit and then
+   * stays quiet unless asked, so it never nags.
+   * ------------------------------------------------------------------ */
+  let mascotIdx = 0;
+  let mascotAutoDone = false;
+  let mascotTimer = null;
+  let sessionKnown = false;   // wait for sign-in to settle so nobody gets two hellos
+
+  function mascotLines() {
+    const out = [];
+    if (!SESSION) {
+      out.push({ text: "Ch\u1ea1m is a student-led nonprofit in Ho Chi Minh City. Members, sign in at the top to see your jobs." });
+      return out;
+    }
+    const me = SESSION.personKey;
+    const first = (PEOPLE[me] && PEOPLE[me].name) || "there";
+    const mine = TASKS.filter((t) => t.who === me && t.status !== "done");
+    const byDue = (a, b) => (a.due || "").localeCompare(b.due || "");
+    const late = mine.filter((t) => t.due && t.due < TODAY).sort(byDue);
+    const soon = mine.filter((t) => t.due && t.due >= TODAY && days(TODAY, t.due) <= 2).sort(byDue);
+
+    if (late.length) out.push({ tone: "bad", go: ["tasks", "See my jobs"],
+      text: (late.length === 1 ? "One of your jobs is" : late.length + " of your jobs are") + " past the date \u2014 \u201c" + late[0].title + "\u201d." });
+    if (soon.length) out.push({ go: ["tasks", "Open my jobs"],
+      text: "Due " + relDay(soon[0].due) + ": \u201c" + soon[0].title + "\u201d." });
+    if (SESSION.admin && DRAFTS && DRAFTS.length) out.push({ go: ["updates", "Review it"],
+      text: "Tonight\u2019s chat wrap is waiting for you to look over." });
+    if (SESSION.finance && LEDGER) {
+      const n = LEDGER.filter((m) => m.status === "new").length;
+      if (n) out.push({ go: ["money", "Open Money"], text: n + " money line" + (n === 1 ? "" : "s") + " to copy into the finance sheet." });
+    }
+    if (LEDGER) {
+      const owed = LEDGER.filter((m) => m.kind === "out" && m.owed && !m.repaid && m.paidBy === me).reduce((a, m) => a + m.amount, 0);
+      if (owed) out.push({ text: "Ch\u1ea1m owes you " + fmtVnd(owed) + ". Thuan can see it on the Money tab." });
+    }
+    if (!late.length && !soon.length) out.push({ go: mine.length ? ["tasks", "My jobs"] : null,
+      text: "Nothing of yours is due in the next two days." + (mine.length
+        ? " You have " + mine.length + " open job" + (mine.length === 1 ? "" : "s") + "."
+        : " You\u2019re all clear.") });
+    if (LEDGER && LEDGER.length) {
+      const sm = moneySummary(LEDGER);
+      const next = MILESTONES.find((ms) => ms.at > sm.raised);
+      if (next && sm.raised > 0) out.push({ go: ["money", "See the goal"],
+        text: "We\u2019ve raised " + fmtVnd(sm.raised) + " after costs \u2014 " + Math.round(sm.raised / next.at * 100)
+          + "% of the way to " + shortVnd(next.at) + ". " + fmtVnd(next.at - sm.raised) + " to go!" });
+    }
+    if (pushState === "off") out.push({ text: "Want a ping when you\u2019re given a job? Turn on notifications in the green bar at the top." });
+    out.push({ text: "Spent money for Ch\u1ea1m? Tap + Log money on the right. It takes ten seconds." });
+
+    out[0] = { ...out[0], text: "Ch\u00e0o " + first + "! " + out[0].text };
+    return out;
+  }
+
+  function showBubble(line, count) {
+    const b = $("mascot-bubble");
+    b.replaceChildren();
+    b.className = "mascot-bubble" + (line.tone ? " " + line.tone : "");
+    b.appendChild(el("button", { class: "mb-x", type: "button", "aria-label": "Close", text: "\u00d7",
+      onclick: (e) => { e.stopPropagation(); hideBubble(); } }));
+    b.appendChild(el("p", { class: "mb-text", text: line.text }));
+    const foot = el("div", { class: "mb-foot" });
+    if (line.go) foot.appendChild(el("button", { class: "mb-go", type: "button", text: line.go[1] + " \u2192",
+      onclick: () => { hideBubble(); setView(line.go[0]); window.scrollTo({ top: 0, behavior: "smooth" }); } }));
+    if (count > 1) foot.appendChild(el("span", { class: "mb-more", text: "Tap me for the next one" }));
+    if (foot.childElementCount) b.appendChild(foot);
+    b.hidden = false;
+    $("mascot").classList.add("talking");
+  }
+  function hideBubble() {
+    clearTimeout(mascotTimer);
+    const b = $("mascot-bubble");
+    if (b) b.hidden = true;
+    $("mascot").classList.remove("talking");
+  }
+  function mascotSay(text) {
+    showBubble({ text, tone: "ok" }, 1);
+    clearTimeout(mascotTimer);
+    mascotTimer = setTimeout(hideBubble, 6000);
+  }
+
+  function renderMascot() {
+    const wrap = $("mascot");
+    if (!wrap) return;
+    wrap.hidden = false;
+    /* speak up once per visit, a moment after the page settles, then go quiet */
+    if (!mascotAutoDone && sessionKnown) {
+      mascotAutoDone = true;
+      setTimeout(() => {
+        const lines = mascotLines();
+        mascotIdx = 0;
+        showBubble(lines[0], lines.length);
+        mascotTimer = setTimeout(hideBubble, 12000);
+      }, 1200);
+    }
+  }
+  (function mascotWiring() {
+    const btn = $("mascot-btn");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      clearTimeout(mascotTimer);
+      const lines = mascotLines();
+      const b = $("mascot-bubble");
+      mascotIdx = b.hidden ? mascotIdx % lines.length : (mascotIdx + 1) % lines.length;
+      showBubble(lines[mascotIdx], lines.length);
+      const svg = btn.querySelector("svg");
+      svg.classList.remove("hop"); void svg.getBoundingClientRect(); svg.classList.add("hop");
+    });
+  })();
 
   function renderMoney() {
     const list = $("money-list");
