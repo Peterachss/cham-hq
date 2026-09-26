@@ -1028,12 +1028,21 @@
    * Judy's speech bubble are the only things you can press).
    * ------------------------------------------------------------------ */
   .mascot {
+    --jh: 196px;                 /* Judy's height */
     pointer-events: none; left: auto; top: auto; right: 52px;
     bottom: calc(18px + env(safe-area-inset-bottom));
   }
-  .mascot.on-fab { bottom: calc(54px + env(safe-area-inset-bottom)); }   /* feet on the button */
-  body.has-install .mascot.on-fab { bottom: calc(128px + env(safe-area-inset-bottom)); }
-  .mascot-btn { width: 62px; height: 124px; cursor: default; }
+  .mascot-btn { width: calc(var(--jh) / 2); height: var(--jh); cursor: default; }
+  /* On the button she peeks out from behind it: the button sits in front
+     (it is one layer up), her legs are cut away just below the belt, and
+     that cut line hides behind the middle of the button. */
+  .mascot.on-fab {
+    right: 62px;                 /* over the left end of the button, beside the + */
+    bottom: calc(41px - var(--jh) * .32 + env(safe-area-inset-bottom));
+  }
+  body.has-install .mascot.on-fab { bottom: calc(115px - var(--jh) * .32 + env(safe-area-inset-bottom)); }
+  .mascot.on-fab .mascot-btn img { clip-path: inset(0 0 32% 0); }
+  .mascot.on-fab .mascot-btn { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
   .mascot-bubble { pointer-events: auto; top: auto; bottom: calc(100% + 8px); left: auto; right: -20px; }
   .mascot-bubble::after { top: auto; bottom: -9px; left: auto; right: 44px; transform: rotate(45deg); }
 
@@ -1056,6 +1065,6 @@
     .clock-float { top: calc(var(--brand-b, 38px) + 8px); right: 12px; padding: 3px 9px 4px; }
     .mc-t { font-size: 15px; }
     .mc-d { font-size: 9.5px; }
-    .mascot { right: 50px; }
-    .mascot-btn { width: 54px; height: 108px; }
+    .mascot { --jh: 170px; right: 50px; }
+    .mascot.on-fab { right: 58px; }
   }
