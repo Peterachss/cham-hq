@@ -97,21 +97,62 @@ service cloud.firestore {
     // their own name as "pending"; the sender (service account) pushes it -
     // to everyone, or for a nudge (with "to") to that one person - and marks
     // it sent. Nobody on the site can edit one or pretend it was sent.
+    // Any member may also send a "test" to their own devices only.
     match /announcements/{annId} {
+      function kind() { return request.resource.data.get('kind', 'announce'); }
       allow read:   if isMember();
-      allow create: if isAdmin()
+      allow create: if isMember()
                     && request.resource.data.by == me().personKey
                     && request.resource.data.createdBy == email()
                     && request.resource.data.status == 'pending'
                     && request.resource.data.text is string
                     && request.resource.data.text.size() > 0
                     && request.resource.data.text.size() <= 300
-                    && request.resource.data.get('kind', 'announce') in ['announce', 'nudge']
-                    && (request.resource.data.get('kind', 'announce') == 'announce'
-                        || (request.resource.data.to is string
-                            && request.resource.data.to.size() > 0
-                            && request.resource.data.to != me().personKey));
+                    && (
+                         (isAdmin() && kind() == 'announce')
+                      || (isAdmin() && kind() == 'nudge'
+                          && request.resource.data.to is string
+                          && request.resource.data.to.size() > 0
+                          && request.resource.data.to != me().personKey)
+                      || (kind() == 'test' && request.resource.data.to == me().personKey)
+                       );
       allow update, delete: if false;
+    }
+
+    // A sale people can pre-order from. Its name, items, prices and pickup
+    // details are public - the order page has to show them to buyers who
+    // have no account. Only admins set one up, open it or close it.
+    match /sales/{saleId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // Pre-orders. Anyone with the link may place one - without an account -
+    // but only while the sale is open, only with the fields the form sends,
+    // and never already marked paid or picked up. Buyers cannot read any
+    // orders back: names and classes are for members only. At the stall any
+    // member can tick paid and picked up, and nothing else.
+    match /orders/{orderId} {
+      function o() { return request.resource.data; }
+      allow create: if o().keys().hasOnly(['sale', 'name', 'cls', 'contact', 'items', 'pay', 'note',
+                                            'code', 'paid', 'pickedUp', 'pushed', 'createdAt'])
+                    && o().sale is string
+                    && exists(/databases/$(database)/documents/sales/$(o().sale))
+                    && get(/databases/$(database)/documents/sales/$(o().sale)).data.open == true
+                    && o().name is string && o().name.size() >= 1 && o().name.size() <= 60
+                    && o().get('cls', '') is string && o().get('cls', '').size() <= 20
+                    && o().get('contact', '') is string && o().get('contact', '').size() <= 60
+                    && o().get('note', '') is string && o().get('note', '').size() <= 200
+                    && o().items is map && o().items.size() >= 1 && o().items.size() <= 12
+                    && o().pay in ['cash', 'transfer']
+                    && o().code is string && o().code.size() <= 8
+                    && o().paid == false && o().pickedUp == false && o().pushed == false
+                    && o().createdAt == request.time;
+      allow read:   if isMember();
+      allow update: if isMember()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['paid', 'pickedUp', 'updatedAt', 'updatedBy']);
+      allow delete: if isAdmin();
     }
 
     match /tasks/{taskId} {

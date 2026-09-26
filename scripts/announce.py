@@ -17,7 +17,9 @@ push.py also calls send_pending() every fifteen minutes, so an announcement
 still goes out if this watcher is not running - just not straight away.
 
 A nudge (an admin tapping Nudge on somebody's job) is the same thing with
-a "to": it goes to that one person only, as "👉 Bach nudged you".
+a "to": it goes to that one person only, as "👉 Bach nudged you". A "test"
+is anybody pressing "Send me a test": it goes to every device of theirs,
+and sentTo says how many, so the site can tell them.
 
 A message is claimed in a transaction before sending, so two senders
 running at once can never push the same announcement twice.
@@ -81,7 +83,13 @@ def send_pending(db, key, dry=False, say=log):
         P = push.Pusher(db, key, dry)
         people = 0
         to = a.get("to")
-        if a.get("kind") == "nudge" and to:
+        if a.get("kind") == "test" and to:
+            if to in subs:
+                P.send(subs[to], "🔔 Test from Chạm HQ", "It works — this device will get announcements, nudges and reminders.",
+                       url="./", tag="test-" + d.id, urgent=True)
+            people = P.sent                             # for a test: how many of their devices got it
+            say(f"test for {to}: {P.sent} device(s)")
+        elif a.get("kind") == "nudge" and to:
             if to in subs and P.send(subs[to], "👉 " + name + " nudged you", text,
                                      url="./#tasks", tag="nudge-" + d.id, urgent=True):
                 people = 1

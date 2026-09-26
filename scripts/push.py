@@ -10,6 +10,7 @@ last one and tells the right people, once:
   money to log       -> finance, when new lines pile up for the sheet
   7am                -> anyone with something overdue, due today or tomorrow
   9pm                -> everyone: a round-up of what the club got done today
+  new pre-orders     -> the admins: how many came in, for which sale
   announcements      -> everyone: anything an admin typed into the Announce
                         box that the always-on watcher (announce.py) missed
   Monday morning     -> everyone: Judy's weekly report - officer of the
@@ -236,6 +237,30 @@ def finance(db, P, by_key, subs, meta):
             P.send(subs[m["key"]], "Money waiting for the sheet", body, url="./#money", tag="finance")
     if not P.dry:
         meta["financeNotified"] = n
+
+
+def orders(db, P, by_key, subs):
+    """New pre-orders since the last run, one notification per sale."""
+    new = list(db.collection("orders").where(filter=FieldFilter("pushed", "==", False)).stream())
+    if not new:
+        return
+    sales = {}
+    for d in new:
+        o = d.to_dict() or {}
+        sales.setdefault(o.get("sale") or "", []).append(o)
+    admins = [m for m in by_key.values() if m["admin"]]
+    for sale_id, os_ in sales.items():
+        s = db.collection("sales").document(sale_id).get()
+        name = (s.to_dict() or {}).get("name", "a sale") if s.exists else "a sale"
+        who = ", ".join(short(o.get("name", "?"), 20) for o in os_[:3]) + ("…" if len(os_) > 3 else "")
+        body = f"{len(os_)} new pre-order{'s' if len(os_) != 1 else ''} for {name} — {who}"
+        log(f"  orders: {body}")
+        for a in admins:
+            if a["key"] in subs:
+                P.send(subs[a["key"]], "🧾 New pre-orders", body, url="./#money", tag="orders-" + sale_id)
+    if not P.dry:
+        for d in new:
+            d.reference.update({"pushed": True})
 
 
 def pretty(iso):
@@ -475,6 +500,7 @@ def main():
     stuck(db, P, by_key, subs)
     finance(db, P, by_key, subs, meta)
     drafts(db, P, by_key, subs)
+    orders(db, P, by_key, subs)
     try:
         import announce
         announce.send_pending(db, key, args.dry_run, say=log)

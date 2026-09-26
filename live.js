@@ -68,7 +68,7 @@ if (!CONFIGURED) {
   };
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
-  let unsubAnn = null;
+  let unsubAnn = null, unsubSales = null, unsubOrders = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -186,6 +186,8 @@ if (!CONFIGURED) {
     if (unsubMoney) { unsubMoney(); unsubMoney = null; }
     if (unsubDrafts) { unsubDrafts(); unsubDrafts = null; }
     if (unsubAnn) { unsubAnn(); unsubAnn = null; }
+    if (unsubSales) { unsubSales(); unsubSales = null; }
+    if (unsubOrders) { unsubOrders(); unsubOrders = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
@@ -195,6 +197,8 @@ if (!CONFIGURED) {
       window.ChamHQ.setMoney(null);
       window.ChamHQ.setDrafts(null);
       window.ChamHQ.setAnnouncements(null);
+      window.ChamHQ.setSales(null);
+      window.ChamHQ.setOrders(null);
       showSignedOut();
       return;
     }
@@ -339,6 +343,33 @@ if (!CONFIGURED) {
         window.ChamHQ.setMoney(null);
       });
 
+    // pre-order sales and the orders people have placed
+    unsubSales = onSnapshot(collection(db, "sales"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, name: v.name || "Sale", date: v.date || null, pickup: v.pickup || "", note: v.note || "",
+            items: Array.isArray(v.items) ? v.items : [], open: v.open === true,
+            logged: typeof v.logged === "number" ? v.logged : 0 });
+        });
+        window.ChamHQ.setSales(rows);
+      },
+      (err) => { console.error("Chạm HQ: lost the sales", err); window.ChamHQ.setSales(null); });
+    unsubOrders = onSnapshot(collection(db, "orders"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, sale: v.sale || "", name: v.name || "", cls: v.cls || "", contact: v.contact || "",
+            note: v.note || "", items: v.items && typeof v.items === "object" ? v.items : {}, pay: v.pay || "cash",
+            code: v.code || "", paid: v.paid === true, pickedUp: v.pickedUp === true,
+            at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : new Date() });
+        });
+        window.ChamHQ.setOrders(rows);
+      },
+      (err) => { console.error("Chạm HQ: lost the orders", err); window.ChamHQ.setOrders(null); });
+
     // tonight's chat wrap, for the two people who approve it
     if (session.admin) {
       unsubDrafts = onSnapshot(query(collection(db, "chatDrafts"), where("status", "==", "pending")),
@@ -466,6 +497,31 @@ if (!CONFIGURED) {
         text, by, byName: byName || "", status: "pending",
         createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
       });
+    },
+    async createSale(s) {
+      const ref = await addDoc(collection(db, "sales"), {
+        name: s.name, date: s.date || null, pickup: s.pickup || "", note: s.note || "",
+        items: s.items, open: true, logged: 0, createdByKey: s.by || "", createdAt: serverTimestamp()
+      });
+      return ref.id;
+    },
+    async setSaleOpen(id, open) { await updateDoc(doc(db, "sales", id), { open, updatedAt: serverTimestamp() }); },
+    async setSaleLogged(id, logged) { await updateDoc(doc(db, "sales", id), { logged, updatedAt: serverTimestamp() }); },
+    async setOrder(id, patch, by) {
+      await updateDoc(doc(db, "orders", id), { ...patch, updatedAt: serverTimestamp(), updatedBy: by || "" });
+    },
+    /* "Send me a test": files a test for your own devices, then calls back
+       when the sender has dealt with it (or never, if nothing is running). */
+    async testPush(me, name, onDone) {
+      const ref = await addDoc(collection(db, "announcements"), {
+        kind: "test", to: me, by: me, byName: name || "", text: "test", status: "pending",
+        createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
+      });
+      const stop = onSnapshot(ref, (s) => {
+        const v = s.data();
+        if (v && v.status === "sent") { stop(); onDone(v.sentTo || 0); }
+      }, () => {});
+      return stop;
     },
     async nudge(text, to, by, byName, taskId) {
       await addDoc(collection(db, "announcements"), {

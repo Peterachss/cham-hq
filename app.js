@@ -118,6 +118,7 @@
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
+  let SALES = null, ORDERS = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -159,6 +160,8 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setSales(rows) { SALES = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
+    setOrders(rows) { ORDERS = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
     setPhotos(rows) {
       PHOTOS = Array.isArray(rows) ? rows : null;
       $("photo-filters").replaceChildren();
@@ -178,7 +181,7 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
@@ -319,6 +322,32 @@
     drawNotify();
   }
 
+  /* Buzz every device you have, to check. The sender on Peter's laptop picks
+     it up within seconds; with the laptop off, GitHub does within ~15 min. */
+  async function sendTest(e) {
+    const b = e.currentTarget, txt = b.parentNode.querySelector(".nb-text");
+    if (!SESSION || !window.ChamLive || !window.ChamLive.testPush) return;
+    b.disabled = true; b.textContent = "Sending\u2026";
+    let answered = false;
+    const reset = () => { b.disabled = false; b.textContent = "Send me a test"; };
+    try {
+      await window.ChamLive.testPush(SESSION.personKey, SESSION.name, (n) => {
+        answered = true;
+        txt.textContent = n ? "\u2713 Sent to " + n + " of your devices \u2014 check your phone"
+                            : "No devices found \u2014 tap Turn off, then turn it on again";
+        reset();
+      });
+      setTimeout(() => {
+        if (answered) return;
+        txt.textContent = "Queued \u2014 it\u2019ll arrive within about 15 minutes";
+        reset();
+      }, 20000);
+    } catch (err) {
+      txt.textContent = "Couldn\u2019t send a test. " + (err.code || err.message || "");
+      reset();
+    }
+  }
+
   function drawNotify() {
     const bar = $("notify-bar");
     if (!bar) return;
@@ -333,6 +362,7 @@
       bar.append(
         el("span", { class: "nb-dot", "aria-hidden": "true" }),
         el("span", { class: "nb-text", text: "Notifications on for this device" }),
+        el("button", { class: "nb-link nb-test", type: "button", text: "Send me a test", onclick: sendTest }),
         el("button", { class: "nb-link", type: "button", text: "Turn off", onclick: turnPushOff })
       );
       bar.hidden = false;
@@ -451,7 +481,7 @@
     if (S.view === "updates") { renderAnnounce(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
-    if (S.view === "money") renderMoney();
+    if (S.view === "money") { renderSales(); renderMoney(); }
     if (S.view === "photos") renderPhotos();
     if (S.view === "tracker") renderTracker();
     renderAdmin();
@@ -849,7 +879,7 @@
     list.replaceChildren();
     clearTimeout(renderAnnounce.timer);
     const hidden = anHidden();
-    const shown = (ANNOUNCES || []).filter((a) =>
+    const shown = (ANNOUNCES || []).filter((a) => a.kind !== "test" &&
       !hidden.includes(a.id) && !(a.status === "sent" && Date.now() - a.at.getTime() > AN_KEEP));
     const nextGone = Math.min(...shown.filter((a) => a.status === "sent").map((a) => a.at.getTime() + AN_KEEP - Date.now()));
     if (isFinite(nextGone)) renderAnnounce.timer = setTimeout(renderAnnounce, Math.max(1000, nextGone + 500));
@@ -2446,6 +2476,179 @@
     });
     tick();
   })();
+
+  /* ------------------------------------------------------------------ *
+   * Pre-orders
+   *
+   * An admin sets up a sale (items and prices) and shares its order link.
+   * Buyers order on order.html without an account. Here everyone sees how
+   * many of each thing to make, who has paid and who has picked up, and
+   * the takings go into the money log with one tap.
+   * ------------------------------------------------------------------ */
+  const orderLink = (id) => location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html?sale=" + encodeURIComponent(id);
+  const qtyOf = (n) => Math.max(0, Math.min(20, Math.floor(Number(n) || 0)));
+  function orderTotal(o, sale) {
+    return (sale.items || []).reduce((a, it) => a + qtyOf(o.items[it.id]) * (it.price || 0), 0);
+  }
+
+  function renderSales() {
+    const box = $("sales");
+    if (!box) return;
+    const admin = Boolean(SESSION && SESSION.admin);
+    const on = Boolean(SESSION && window.ChamLive && window.ChamLive.createSale && SALES);
+    box.hidden = !on || (!admin && !SALES.length);
+    if (box.hidden) { if (!on) box.replaceChildren(); return; }
+
+    if (!box.childElementCount) {
+      const toggle = admin ? el("button", { class: "act", type: "button", text: "+ New sale",
+        onclick: () => { const f = $("sale-form"); f.hidden = !f.hidden; if (!f.hidden) f.querySelector("input").focus(); } }) : null;
+      box.append(
+        el("div", { class: "sl-headrow" }, [
+          el("div", {}, [el("h3", { class: "an-h", text: "\ud83e\uddfe Pre-orders" }),
+            el("p", { class: "an-sub", text: "Share a sale\u2019s order link; orders land here live. Tick them paid and picked up at the stall." })]),
+          toggle
+        ]),
+        admin ? saleForm() : null,
+        el("div", { id: "sale-list" }));
+    }
+
+    const list = $("sale-list");
+    list.replaceChildren();
+    const sales = SALES.slice().sort((a, b) => (b.open - a.open) || String(b.date || "").localeCompare(String(a.date || "")));
+    if (!sales.length) list.appendChild(el("p", { class: "viz-none", text: "No sales yet. Tap + New sale once the details are set." }));
+    sales.forEach((s) => list.appendChild(saleCard(s)));
+  }
+
+  function saleForm() {
+    const name = el("input", { class: "ad-in wide", type: "text", maxlength: "60", placeholder: "Sale name, e.g. Ice cream sale", "aria-label": "Sale name" });
+    const date = el("input", { class: "ad-in", type: "date", "aria-label": "Sale day" });
+    const pickup = el("input", { class: "ad-in wide", type: "text", maxlength: "80", placeholder: "Pickup, e.g. Break time, outside the canteen", "aria-label": "Pickup" });
+    const note = el("input", { class: "ad-in wide", type: "text", maxlength: "200", placeholder: "Note for buyers (optional), e.g. transfer to \u2026", "aria-label": "Note for buyers" });
+    const rows = el("div", { class: "sf-items" });
+    const addRow = () => rows.appendChild(el("div", { class: "sf-item" }, [
+      el("input", { class: "ad-in wide sf-n", type: "text", maxlength: "40", placeholder: "Item, e.g. Vanilla", "aria-label": "Item" }),
+      el("input", { class: "ad-in sf-p", type: "text", inputmode: "numeric", placeholder: "Price, e.g. 30k", "aria-label": "Price" })
+    ]));
+    addRow(); addRow();
+    const msg = el("span", { class: "ad-msg" });
+    const make = el("button", { class: "au-go", type: "button", text: "Create sale & get link" });
+    make.addEventListener("click", async () => {
+      msg.classList.remove("bad");
+      const items = [...rows.querySelectorAll(".sf-item")].map((r, i) => ({
+        id: "i" + (i + 1), name: r.querySelector(".sf-n").value.trim(), price: parseVnd(r.querySelector(".sf-p").value) || 0
+      })).filter((it) => it.name);
+      const bad = (t) => { msg.textContent = t; msg.classList.add("bad"); };
+      if (!name.value.trim()) return bad("Give the sale a name.");
+      if (!items.length) return bad("Add at least one item.");
+      if (items.some((it) => !it.price)) return bad("Every item needs a price.");
+      make.disabled = true; make.textContent = "Creating\u2026";
+      try {
+        await window.ChamLive.createSale({ name: name.value.trim(), date: date.value || null, pickup: pickup.value.trim(),
+          note: note.value.trim(), items, by: SESSION.personKey });
+        [name, date, pickup, note].forEach((i) => { i.value = ""; });
+        rows.replaceChildren(); addRow(); addRow();
+        form.hidden = true; msg.textContent = "";
+        toast("Sale created \u2014 copy its link below");
+      } catch (e) { bad("Couldn\u2019t create it. " + (e.code || e.message)); }
+      finally { make.disabled = false; make.textContent = "Create sale & get link"; }
+    });
+    const form = el("div", { class: "sale-form", id: "sale-form", hidden: true }, [
+      el("div", { class: "sf-row" }, [name, date]), pickup, note,
+      el("span", { class: "sf-k", text: "Items and prices" }), rows,
+      el("div", { class: "sf-row" }, [
+        el("button", { class: "act ghost", type: "button", text: "+ Another item", onclick: () => { if (rows.childElementCount < 12) addRow(); } }),
+        make]),
+      msg
+    ]);
+    return form;
+  }
+
+  function saleCard(s) {
+    const admin = Boolean(SESSION && SESSION.admin);
+    const os = (ORDERS || []).filter((o) => o.sale === s.id).sort((a, b) => (a.pickedUp - b.pickedUp) || (a.at - b.at));
+    const make = {};
+    let expected = 0, paid = 0, picked = 0;
+    os.forEach((o) => {
+      (s.items || []).forEach((it) => { make[it.id] = (make[it.id] || 0) + qtyOf(o.items[it.id]); });
+      const t = orderTotal(o, s);
+      expected += t; if (o.paid) paid += t; if (o.pickedUp) picked++;
+    });
+    const link = orderLink(s.id);
+    const copy = el("button", { class: "act", type: "button", text: "Copy link",
+      onclick: async (e) => {
+        const b = e.currentTarget;
+        try { await navigator.clipboard.writeText(link); b.textContent = "Copied \u2713"; }
+        catch (err) { linkIn.select(); b.textContent = "Press Ctrl+C"; }
+        setTimeout(() => { b.textContent = "Copy link"; }, 2500);
+      } });
+    const linkIn = el("input", { class: "ad-in wide sl-link", type: "text", readonly: true, value: link, "aria-label": "Order link",
+      onclick: (e) => e.currentTarget.select() });
+
+    const head = el("div", { class: "sl-head" }, [
+      el("div", {}, [
+        el("b", { class: "sl-name", text: s.name }),
+        el("span", { class: "sl-meta", text: [s.date ? pretty(s.date) : "", s.pickup].filter(Boolean).join(" \u00b7 ") })
+      ]),
+      el("span", { class: "sl-badge" + (s.open ? " open" : ""), text: s.open ? "Taking orders" : "Closed" })
+    ]);
+
+    const tools = el("div", { class: "sl-tools" }, [linkIn, copy,
+      admin ? el("button", { class: "act ghost", type: "button", text: s.open ? "Close orders" : "Reopen orders",
+        onclick: (e) => { e.currentTarget.disabled = true; window.ChamLive.setSaleOpen(s.id, !s.open).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message))); } }) : null]);
+
+    const makeLine = el("div", { class: "sl-make" }, [el("span", { class: "sl-k", text: "Make" })].concat(
+      (s.items || []).map((it) => el("span", { class: "sl-chip" }, [el("b", { text: String(make[it.id] || 0) }), document.createTextNode(" \u00d7 " + it.name)]))));
+
+    const nums = el("div", { class: "sl-nums" }, [
+      el("span", { text: os.length + " order" + (os.length === 1 ? "" : "s") }),
+      el("span", { text: "Expected " + fmtVnd(expected) }),
+      el("span", { class: "ok", text: "Paid " + fmtVnd(paid) }),
+      el("span", { text: "Picked up " + picked + "/" + os.length })
+    ]);
+
+    const toLog = paid - (s.logged || 0);
+    const logBtn = canManageMoney() && toLog > 0 ? el("button", { class: "au-go sl-log", type: "button",
+      text: "Log " + fmtVnd(toLog) + " as money in",
+      onclick: async (e) => {
+        const b = e.currentTarget;
+        if (!tapTwice(b, "Tap again to log " + fmtVnd(toLog))) return;
+        b.disabled = true;
+        try {
+          await window.ChamLive.addMoney({ kind: "in", date: TODAY, amount: toLog,
+            description: s.name + " pre-orders (" + os.filter((o) => o.paid).length + " paid)",
+            category: "Sales", budgetLine: s.name, paidBy: SESSION.personKey, method: "cash",
+            notes: "From the pre-order list, cash and transfers together" });
+          await window.ChamLive.setSaleLogged(s.id, paid);
+          toast("Logged " + fmtVnd(toLog) + " for " + s.name);
+        } catch (err) { b.disabled = false; toast("Didn\u2019t log. " + (err.code || err.message)); }
+      } }) : null;
+
+    const rows = el("div", { class: "sl-orders" });
+    os.forEach((o) => {
+      const what = (s.items || []).filter((it) => qtyOf(o.items[it.id])).map((it) => qtyOf(o.items[it.id]) + "\u00d7 " + it.name).join(", ");
+      const flip = (k, label) => el("button", { class: "act sl-flip" + (o[k] ? " on" : ""), type: "button", "aria-pressed": String(o[k]),
+        text: (o[k] ? "\u2713 " : "") + label,
+        onclick: (e) => {
+          e.currentTarget.disabled = true;
+          window.ChamLive.setOrder(o.id, { [k]: !o[k] }, SESSION.personKey).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message)));
+        } });
+      rows.appendChild(el("div", { class: "sl-order" + (o.pickedUp ? " done" : "") }, [
+        el("span", { class: "sl-code", text: o.code }),
+        el("div", { class: "sl-who" }, [
+          el("b", { text: o.name + (o.cls ? " \u00b7 " + o.cls : "") }),
+          el("span", { text: what + (o.note ? " \u2014 \u201c" + o.note + "\u201d" : "") + (o.contact ? " \u00b7 " + o.contact : "") })
+        ]),
+        el("span", { class: "sl-amt" }, [el("b", { text: fmtVnd(orderTotal(o, s)) }), el("span", { text: o.pay === "transfer" ? "transfer" : "cash" })]),
+        el("div", { class: "sl-flips" }, [flip("paid", "Paid"), flip("pickedUp", "Picked up")])
+      ]));
+    });
+
+    return el("section", { class: "sale-card" + (s.open ? " open" : "") }, [
+      head, tools, os.length ? makeLine : null, os.length ? nums : el("p", { class: "sl-empty", text: s.open ? "No orders yet \u2014 share the link." : "No orders." }),
+      logBtn,
+      os.length ? el("details", { class: "sl-det", open: os.length <= 40 }, [el("summary", { text: "All " + os.length + " orders" }), rows]) : null
+    ]);
+  }
 
   function renderMoney() {
     const list = $("money-list");

@@ -37,6 +37,10 @@ async function seed() {
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
     await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
     await setDoc(doc(db, "announcements", "a-1"), { text: "hi", by: "peter", createdBy: PETER, status: "pending" });
+    await setDoc(doc(db, "sales", "s-open"), { name: "Ice cream sale", open: true, items: [{ id: "v", name: "Vanilla", price: 30000 }] });
+    await setDoc(doc(db, "sales", "s-shut"), { name: "Bake sale", open: false, items: [{ id: "c", name: "Cookie", price: 15000 }] });
+    await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
+      code: "A7K2", paid: false, pickedUp: false, pushed: false });
   });
 }
 
@@ -45,6 +49,9 @@ const anon = () => env.unauthenticatedContext().firestore();
 
 const ANN = (by, key, extra = {}) => ({ text: "Are we still doing the ice cream sale?", by: key, byName: "x",
   createdBy: by, status: "pending", createdAt: serverTimestamp(), ...extra });
+
+const ORD = (extra = {}) => ({ sale: "s-open", name: "Minh", cls: "10A", contact: "", items: { v: 2 }, pay: "cash",
+  note: "", code: "B3X9", paid: false, pickedUp: false, pushed: false, createdAt: serverTimestamp(), ...extra });
 
 const EXP = (by, extra = {}) => ({ kind: "out", amount: 250000, description: "Beads", category: "Events",
   status: "new", createdBy: by, receipt: "", ...extra });
@@ -145,6 +152,31 @@ const cases = [
   ["a nudge needs somebody to go to",        false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "nudge" }))],
   ["cannot nudge yourself",                  false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "nudge", to: "bach" }))],
   ["no made-up kinds",                       false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "shout" }))],
+
+  // ---------------------------------------------------------------- test notifications
+  ["member sends a test to themselves",      true,  () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "test", to: "emily" }))],
+  ["member cannot test someone else",        false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "test", to: "bach" }))],
+  ["member still cannot announce",           false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "announce" }))],
+
+  // ---------------------------------------------------------------- sales + pre-orders
+  ["anyone can see a sale (the order page)", true,  () => getDoc(doc(anon(), "sales/s-open"))],
+  ["admin sets up a sale",                   true,  () => setDoc(doc(as(BACH), "sales/s-new"), { name: "Bracelets", open: true, items: [] })],
+  ["member cannot set up a sale",            false, () => setDoc(doc(as(EMILY), "sales/s-new"), { name: "x", open: true, items: [] })],
+  ["signed-out buyer places an order",       true,  () => addDoc(collection(anon(), "orders"), ORD())],
+  ["no ordering once the sale is closed",    false, () => addDoc(collection(anon(), "orders"), ORD({ sale: "s-shut" }))],
+  ["no ordering from a made-up sale",        false, () => addDoc(collection(anon(), "orders"), ORD({ sale: "nope" }))],
+  ["buyer cannot mark it paid",              false, () => addDoc(collection(anon(), "orders"), ORD({ paid: true }))],
+  ["buyer cannot add extra fields",          false, () => addDoc(collection(anon(), "orders"), ORD({ price: 1 }))],
+  ["buyer name must be sensible",            false, () => addDoc(collection(anon(), "orders"), ORD({ name: "x".repeat(61) }))],
+  ["order must have something in it",        false, () => addDoc(collection(anon(), "orders"), ORD({ items: {} }))],
+  ["buyers cannot read orders",              false, () => getDoc(doc(anon(), "orders/o-1"))],
+  ["stranger cannot read orders",            false, () => getDocs(collection(as(STRANGER), "orders"))],
+  ["member lists orders (the site's query)", true,  () => getDocs(collection(as(EMILY), "orders"))],
+  ["member ticks paid at the stall",         true,  () => updateDoc(doc(as(EMILY), "orders/o-1"), { paid: true, updatedAt: serverTimestamp(), updatedBy: "emily" })],
+  ["member cannot change what was ordered",  false, () => updateDoc(doc(as(EMILY), "orders/o-1"), { items: { v: 20 } })],
+  ["buyer cannot tick their own order paid", false, () => updateDoc(doc(anon(), "orders/o-1"), { paid: true })],
+  ["member cannot delete an order",          false, () => deleteDoc(doc(as(EMILY), "orders/o-1"))],
+  ["admin deletes a junk order",             true,  () => deleteDoc(doc(as(BACH), "orders/o-1"))],
 ];
 
 let failed = 0;
