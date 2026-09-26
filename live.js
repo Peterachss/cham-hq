@@ -71,6 +71,7 @@ if (!CONFIGURED) {
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
+  let unsubPushStatus = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -193,6 +194,7 @@ if (!CONFIGURED) {
     if (unsubActs) { unsubActs(); unsubActs = null; }
     if (unsubSponsors) { unsubSponsors(); unsubSponsors = null; }
     if (unsubMeetings) { unsubMeetings(); unsubMeetings = null; }
+    if (unsubPushStatus) { unsubPushStatus(); unsubPushStatus = null; }
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -245,7 +247,8 @@ if (!CONFIGURED) {
       admin: member.admin === true,
       finance: member.finance === true,
       name: member.name || (window.ChamHQ.personName(member.personKey) || user.email),
-      role: window.ChamHQ.personRole(member.personKey)
+      role: window.ChamHQ.personRole(member.personKey),
+      nudged: member.notifyNudge || null          // an admin asked this person to turn notifications on
     };
     window.ChamHQ.setSession(session);
     showSignedIn(session);
@@ -413,6 +416,12 @@ if (!CONFIGURED) {
         window.ChamHQ.setSponsors(rows);
       },
       (err) => { console.error("Chạm HQ: lost the sponsors", err); window.ChamHQ.setSponsors(null); });
+    // admins: who has notifications on (worked out by the sender)
+    if (session.admin) {
+      unsubPushStatus = onSnapshot(doc(db, "meta", "pushStatus"),
+        (s) => window.ChamHQ.setPushStatus(s.exists() ? s.data() : null),
+        (err) => { console.error("Chạm HQ: lost the notification list", err); window.ChamHQ.setPushStatus(null); });
+    }
     unsubMeetings = onSnapshot(collection(db, "meetings"),
       (qs) => {
         const rows = [];
@@ -568,6 +577,9 @@ if (!CONFIGURED) {
       if (id) { await setDoc(doc(db, "meetings", id), { ...m, updatedAt: serverTimestamp() }, { merge: true }); return id; }
       const ref = await addDoc(collection(db, "meetings"), { ...m, createdAt: serverTimestamp() });
       return ref.id;
+    },
+    async nudgeNotify(email, by) {
+      await updateDoc(doc(db, "members", email), { notifyNudge: { by, at: new Date().toISOString().slice(0, 10) } });
     },
     async deleteMeeting(id) { await deleteDoc(doc(db, "meetings", id)); },
     async setCheck(id, key, on) { await updateDoc(doc(db, "activities", id), { ["checks." + key]: on, updatedAt: serverTimestamp() }); },

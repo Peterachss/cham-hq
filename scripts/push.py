@@ -304,6 +304,29 @@ def sponsor_followups(db, P, by_key, subs, today):
             d.reference.update({"pingedOn": iso})
 
 
+def push_status(db, members, subs, dry):
+    """Who has notifications on, for the admins' list (meta/pushStatus) -
+    the site itself may not read the subscriptions. Someone an admin nudged
+    stops being nudged the moment a device of theirs is on."""
+    people = {}
+    for m in members.values():
+        devs = sorted({(s.get("device") or "a device") for s in subs.get(m["key"], [])})
+        people[m["key"]] = {"name": m["name"], "email": m["email"], "devices": devs}
+    status = {"people": people}
+    ref = db.collection("meta").document("pushStatus")
+    old = ref.get().to_dict() or {}
+    old.pop("updated", None)
+    if not dry:
+        if old != status:
+            ref.set(status | {"updated": dt.datetime.now(VN).isoformat(timespec="minutes")})
+        for m in members.values():
+            if m["key"] in subs:
+                d = db.collection("members").document(m["email"])
+                if (d.get().to_dict() or {}).get("notifyNudge"):
+                    d.update({"notifyNudge": firestore.DELETE_FIELD})
+                    log(f"  {m['name']} turned notifications on - nudge cleared")
+
+
 def pretty(iso):
     try:
         d = dt.date.fromisoformat(iso)
@@ -543,6 +566,10 @@ def main():
     drafts(db, P, by_key, subs)
     orders(db, P, by_key, subs)
     reviews(db, P, by_key, subs, today)
+    try:
+        push_status(db, members, subs, args.dry_run)
+    except Exception as e:
+        log(f"  push status: {type(e).__name__}: {e}")
     sponsor_followups(db, P, by_key, subs, today)
     try:
         import announce

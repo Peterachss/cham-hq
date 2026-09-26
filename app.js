@@ -114,7 +114,7 @@
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
-  let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null;
+  let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -156,6 +156,7 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setPushStatus(d) { PUSHSTATUS = d; if (S.view === "updates") renderWhosOn(); },
     setSponsors(rows) { SPONSORS = Array.isArray(rows) ? rows : null; render(); },
     setMeetings(rows) { MEETINGS = Array.isArray(rows) ? rows : null; if (S.view === "calendar") { renderMeetings(); renderCalendar(); } },
     setActivities(rows) { ACTS = Array.isArray(rows) ? rows : null; if (S.view === "tracker") renderImpact(); },
@@ -180,7 +181,7 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings","whos-on","me"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
@@ -368,12 +369,14 @@
       return;
     }
 
-    if (Date.now() < dismissedUntil()) { bar.hidden = true; return; }
+    const nudgedBy = SESSION && SESSION.nudged ? (PEOPLE[SESSION.nudged.by] ? PEOPLE[SESSION.nudged.by].name : "An admin") : null;
+    if (!nudgedBy && Date.now() < dismissedUntil()) { bar.hidden = true; return; }
 
     const later = el("button", { class: "nb-link", type: "button", text: "Not now",
       onclick: () => { dismissForAWeek(); bar.hidden = true; } });
 
-    bar.className = "nb";
+    bar.className = "nb" + (nudgedBy ? " nb-nudged" : "");
+    if (nudgedBy) bar.append(el("div", { class: "nb-ask", text: "\ud83d\udc4b " + nudgedBy + " asked you to turn these on \u2014 it takes ten seconds." }));
     if (pushState === "ios") {
       bar.append(el("div", { class: "nb-body" }, [
         el("b", { text: "Want notifications on your iPhone?" }),
@@ -437,7 +440,7 @@
     selected: TODAY
   };
 
-  const VIEWS = ["updates","calendar","tasks","money","photos","tracker","sponsors"];
+  const VIEWS = ["me","updates","calendar","tasks","money","photos","tracker","sponsors"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -477,7 +480,8 @@
     renderGlance();
     renderNotify();
     renderFab();
-    if (S.view === "updates") { renderAnnounce(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "updates") { renderAnnounce(); renderWhosOn(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "me") renderMe();
     if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
     if (S.view === "sponsors") renderSponsors();
     if (S.view === "tasks") renderTasks();
@@ -538,6 +542,9 @@
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
     $("n-photos").textContent = PHOTOS ? PHOTOS.length : "";
     $("n-sponsors").textContent = SPONSORS ? SPONSORS.filter((x) => x.stage !== "no").length : "";
+    const need = SESSION ? meNeeds().length : 0;
+    $("n-me").textContent = need ? String(need) : "";
+    $("n-me").classList.toggle("hot", need > 0);
     /* for Thuan the useful number is what has not reached the sheet yet */
     $("n-money").textContent = LEDGER ? (LEDGER.filter((m) => m.status === "new").length || "") : "";
 
@@ -835,6 +842,141 @@
    * files the message; the sender on Peter's computer pushes it within
    * seconds and writes back how many people got it.
    * ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ *
+   * Admins: who is actually getting notifications. The list comes from the
+   * sender (meta/pushStatus); nudging someone puts a banner in front of
+   * them next time they open the site, until a device of theirs is on.
+   * ------------------------------------------------------------------ */
+  function renderWhosOn() {
+    const box = $("whos-on");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && PUSHSTATUS && PUSHSTATUS.people);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    const ppl = Object.entries(PUSHSTATUS.people)
+      .filter(([k]) => PEOPLE[k] && !/^Left /.test(PEOPLE[k].role || ""))
+      .sort((a, b) => (a[1].devices.length > 0) - (b[1].devices.length > 0) || a[1].name.localeCompare(b[1].name));
+    const onN = ppl.filter(([, p]) => p.devices.length).length;
+    const off = ppl.filter(([, p]) => !p.devices.length).map(([, p]) => p.name);
+    const wasOpen = box.querySelector("details") && box.querySelector("details").open;
+    const rows = ppl.map(([k, p]) => {
+      const isOn = p.devices.length > 0;
+      const nudged = NUDGED_N[k];
+      return el("div", { class: "wo-row" + (isOn ? " on" : "") }, [
+        avatar(k), el("b", { text: p.name }),
+        el("span", { class: "wo-dev", text: isOn ? p.devices.join(" \u00b7 ") : "off" }),
+        isOn ? el("span", { class: "wo-ok", text: "\u2713" })
+             : el("button", { class: "act" + (nudged ? " sent" : ""), type: "button", disabled: nudged, text: nudged ? "Nudged \u2713" : "Nudge",
+                 title: "Shows " + p.name + " a banner asking them to turn notifications on, next time they open the site",
+                 onclick: async (e) => {
+                   const b = e.currentTarget; b.disabled = true;
+                   try { await window.ChamLive.nudgeNotify(p.email, SESSION.personKey); NUDGED_N[k] = true; b.textContent = "Nudged \u2713"; b.classList.add("sent"); toast(p.name + " will see a reminder next time"); }
+                   catch (err) { b.disabled = false; toast("Didn\u2019t save. " + (err.code || err.message)); }
+                 } })
+      ]);
+    });
+    const msg = "Can everyone turn on notifications for Ch\u1ea1m HQ? Open peterachss.github.io/cham-hq, sign in, tap Turn on in the green bar. iPhone: Share \u2192 Add to Home Screen first, then open it from there.";
+    box.replaceChildren(el("details", { open: wasOpen }, [
+      el("summary", {}, [el("b", { text: "\ud83d\udd14 " + onN + " of " + ppl.length + " get notifications" }),
+        off.length ? el("span", { class: "wo-off", text: " \u00b7 off: " + off.join(", ") }) : null]),
+      el("div", { class: "wo-list" }, rows),
+      off.length ? el("div", { class: "sf-row" }, [
+        el("span", { class: "an-sub", text: "Or paste a reminder in the group chat:" }),
+        el("button", { class: "act ghost", type: "button", text: "Copy reminder", onclick: async (e) => {
+          const b = e.currentTarget;
+          try { await navigator.clipboard.writeText(msg); b.textContent = "Copied \u2713"; } catch (err) { b.textContent = "Couldn\u2019t copy"; }
+          setTimeout(() => { b.textContent = "Copy reminder"; }, 2500);
+        } })]) : null
+    ]));
+  }
+  const NUDGED_N = {};
+
+  /* ------------------------------------------------------------------ *
+   * Me - everything that is mine, in one place
+   * ------------------------------------------------------------------ */
+  function meNeeds() {
+    if (!SESSION) return [];
+    const me = SESSION.personKey, soon = shiftDay(TODAY, 1), out = [];
+    TASKS.filter((t) => t.who === me && t.status !== "done" && t.due && t.due <= soon).forEach((t) => out.push("job"));
+    (SPONSORS || []).filter((x) => x.owner === me && !["agreed", "no"].includes(x.stage) && x.next && x.next <= TODAY).forEach(() => out.push("sponsor"));
+    (MEETINGS || []).forEach((m) => m.decisions.forEach((d) => { if (d.who === me && !d.taskId) out.push("action"); }));
+    return out;
+  }
+
+  function renderMe() {
+    const box = $("me");
+    if (!box || !SESSION) return;
+    const me = SESSION.personKey, p = PEOPLE[me] || { name: SESSION.name };
+    const sec = (title, sub, kids) => el("section", { class: "me-sec" }, [
+      el("h3", { class: "me-h" }, [document.createTextNode(title + " "), sub ? el("span", { text: sub }) : null])].concat(kids));
+
+    // points
+    const pt = pointsTable();
+    const mine = pt.rows.find((r) => r.key === me);
+    const rank = mine ? pt.rows.filter((r) => r.total > mine.total).length + 1 : null;
+    const officer = pt.officers.includes(me);
+
+    // jobs
+    const jobs = TASKS.filter((t) => t.who === me && t.status !== "done")
+      .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+    const jobCards = jobs.map((t) => {
+      const late = t.due && t.due < TODAY;
+      const body = el("div", { class: "body" }, [
+        el("div", { class: "tt", text: t.title }),
+        t.note ? el("div", { class: "note", text: t.note }) : null,
+        el("div", { class: "meta" }, [el("span", { class: "pill " + (late ? "late" : t.status), text: late ? "overdue" : STATUS[t.status].label }),
+          t.due ? el("span", { class: "pill due", text: (late ? "was due " : "due ") + relDay(t.due) }) : el("span", { class: "pill due", text: "no date" })])
+      ]);
+      if (canEdit(t)) body.appendChild(taskActions(t));
+      return el("article", { class: "card task s-" + (late ? "late" : t.status) }, [body]);
+    });
+
+    // money
+    const owed = (LEDGER || []).filter((m) => m.kind === "out" && m.owed && !m.repaid && m.paidBy === me);
+    const unsynced = (LEDGER || []).filter((m) => m.createdBy === SESSION.email && m.status === "new");
+    const moneyRows = owed.map((m) => el("li", {}, [el("b", { text: fmtVnd(m.amount) }), document.createTextNode(" \u00b7 " + m.description + (m.date ? " \u00b7 " + pretty(m.date) : ""))]));
+
+    // sponsors I chase
+    const sps = (SPONSORS || []).filter((x) => x.owner === me && !["agreed", "no"].includes(x.stage))
+      .sort((a, b) => (a.next || "9").localeCompare(b.next || "9"));
+    // meetings
+    const actions = [];
+    (MEETINGS || []).forEach((m) => m.decisions.forEach((d) => { if (d.who === me && !d.taskId) actions.push({ m, d }); }));
+    const nextMeets = (MEETINGS || []).filter((m) => m.date >= TODAY && (!m.people.length || m.people.includes(me))).sort((a, b) => a.date.localeCompare(b.date));
+
+    const need = meNeeds().length;
+    box.replaceChildren(
+      el("div", { class: "me-head" }, [
+        avatar(me, true),
+        el("div", { class: "me-id" }, [el("h2", { class: "sec", text: "Hi " + p.name + (officer ? " \ud83d\udc6e" : "") }),
+          el("span", { class: "an-sub", text: (p.role || "") + (SESSION.admin ? " \u00b7 admin" : "") })]),
+        el("div", { class: "me-pts" }, [
+          el("span", { class: "im-n", text: mine ? (mine.total > 0 ? "+" : "") + mine.total : "0" }),
+          el("span", { class: "im-k", text: "points" + (rank ? " \u00b7 #" + rank + " of " + pt.rows.length : "") + (mine ? " \u00b7 " + (mine.week > 0 ? "+" : "") + mine.week + " this week" : "") })
+        ])
+      ]),
+      el("p", { class: "me-need" + (need ? " hot" : "") }, [document.createTextNode(need
+        ? (need === 1 ? "1 thing needs" : need + " things need") + " you soon \u2014 at the top of the lists below."
+        : "Nothing urgent. Nice.")]),
+      sec("My jobs", jobs.length ? String(jobs.length) + " open" : "", jobCards.length ? [el("div", { class: "tasklist" }, jobCards)]
+        : [el("p", { class: "viz-none", text: "No open jobs. Ask Bach or Thy for one, or take one from the chat." })]),
+      actions.length ? sec("From meetings", "not on the jobs list yet", [el("ul", { class: "me-list" }, actions.map(({ m, d }) =>
+        el("li", {}, [el("b", { text: d.text }), document.createTextNode(" \u00b7 " + pretty(m.date) + " meeting" + (d.due ? " \u00b7 by " + relDay(d.due) : ""))])))]) : null,
+      sec("Money", owed.length ? "owed to you: " + fmtVnd(owed.reduce((n, m) => n + m.amount, 0)) : "", [
+        owed.length ? el("ul", { class: "me-list" }, moneyRows) : el("p", { class: "viz-none", text: "Ch\u1ea1m doesn\u2019t owe you anything right now." }),
+        unsynced.length ? el("p", { class: "an-sub", text: unsynced.length + " line" + (unsynced.length === 1 ? "" : "s") + " you logged " + (unsynced.length === 1 ? "is" : "are") + " waiting to go into the finance sheet (that\u2019s automatic)." }) : null
+      ]),
+      sps.length ? sec("Sponsors you\u2019re chasing", String(sps.length), [el("ul", { class: "me-list" }, sps.map((x) => {
+        const late = x.next && x.next <= TODAY;
+        return el("li", { class: late ? "late" : "" }, [el("b", { text: x.name }), document.createTextNode(" \u00b7 " + (x.next ? (late ? "follow up now (" + relDay(x.next) + ")" : "follow up " + relDay(x.next)) : "no follow-up date") + " \u00b7 " + (STAGES_SP.find(([k]) => k === x.stage) || ["", x.stage])[1])]);
+      }))]) : null,
+      nextMeets.length ? sec("Coming up", "", [el("ul", { class: "me-list" }, nextMeets.slice(0, 4).map((m) =>
+        el("li", {}, [el("b", { text: m.title }), document.createTextNode(" \u00b7 " + relDay(m.date))])))]) : null,
+      sec("This device", "", [el("p", { class: "an-sub", text: pushState === "on" ? "\ud83d\udd14 Notifications are on here. Use \u201cSend me a test\u201d in the green bar at the top to check."
+        : "\ud83d\udd15 Notifications are off on this device \u2014 turn them on in the bar at the top so you hear about new jobs and nudges." })])
+    );
+  }
+
   function renderAnnounce() {
     const box = $("announce");
     if (!box) return;

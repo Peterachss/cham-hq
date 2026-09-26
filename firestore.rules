@@ -190,6 +190,13 @@ service cloud.firestore {
     // The site's base data (team, calendar, the chat feed, links). It used
     // to be a public file; now only members can read it. Uploaded by
     // scripts/publish_data.py with the service account.
+    // Who has notifications on, and on what kind of device - worked out by
+    // the sender from the subscriptions nobody else may read. Admins only.
+    match /meta/{docId} {
+      allow read:  if docId == 'pushStatus' && isAdmin();
+      allow write: if false;
+    }
+
     match /site/{docId} {
       allow read:  if isMember();
       allow write: if false;

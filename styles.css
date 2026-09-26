@@ -1210,3 +1210,33 @@
   .gate-ic { font-size: 30px; }
   .gate-card h2 { margin: 8px 0 6px; font-family: var(--serif); font-size: 24px; }
   .gate-card p { margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.5; }
+
+  /* who's on (admins, Updates tab) */
+  .whos-on { margin: 0 0 18px; padding: 10px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+  .whos-on summary { cursor: pointer; font-size: 14px; }
+  .wo-off { color: var(--muted); font-size: 13px; }
+  .wo-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+  .wo-row { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 8px; font-size: 13.5px; }
+  .wo-dev { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wo-row:not(.on) .wo-dev { color: var(--clay); }
+  .wo-ok { color: var(--jade); font-weight: 700; padding: 0 8px; }
+  .act.sent { color: var(--jade); }
+  .nb-ask { flex-basis: 100%; font-weight: 700; color: var(--marigold); margin-bottom: 4px; }
+  .nb.nb-nudged { border-color: var(--marigold); }
+
+  /* Me */
+  .me-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .me-head .av.lg { width: 48px; height: 48px; font-size: 17px; }
+  .me-id { flex: 1 1 200px; display: flex; flex-direction: column; }
+  .me-id .sec { margin: 0; }
+  .me-pts { display: flex; flex-direction: column; align-items: flex-end; }
+  .me-need { margin: 0 0 16px; padding: 10px 14px; border-radius: 10px; background: var(--jade-soft); color: var(--jade); font-weight: 600; font-size: 14px; }
+  .me-need.hot { background: var(--marigold-soft); color: var(--marigold); }
+  .me-sec { margin: 0 0 22px; }
+  .me-h { margin: 0 0 10px; font-family: var(--serif); font-size: 19px; }
+  .me-h span { font-family: var(--sans); font-size: 12.5px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .me-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .me-list li { padding: 9px 12px; border-radius: 9px; background: var(--card); border: 1px solid var(--line-soft); font-size: 13.5px; color: var(--ink-2); }
+  .me-list li b { color: var(--ink); }
+  .me-list li.late { border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); }
+  .tab .n.hot { background: var(--marigold); color: #1b1405; }
