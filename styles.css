@@ -1022,3 +1022,12 @@
     color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 6px;
   }
   .an-x:hover { color: var(--ink); background: var(--card); }
+
+  /* a button waiting for its second tap */
+  .armed, .au-go.armed, .act.armed, .lg-a.armed {
+    background: var(--marigold) !important; color: #1b1405 !important; border-color: var(--marigold) !important;
+    animation: armed-pulse 1s ease-in-out infinite alternate;
+  }
+  .bullet-x.armed { width: auto; padding: 0 8px; border-radius: 999px; font-size: 12px; }
+  @keyframes armed-pulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--marigold) 50%, transparent); } to { box-shadow: 0 0 0 5px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .armed { animation: none; } }

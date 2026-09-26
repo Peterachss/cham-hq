@@ -33,6 +33,24 @@
   const MONTH_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
+  /* "Are you sure?" without a pop-up. Browser confirm boxes can be blocked
+     (in-app browsers, or after ticking "don't show more dialogs"), and a
+     blocked one silently answers no - so the button seemed dead. Instead
+     the first tap turns the button into "Tap again to ..." for four
+     seconds, and only a second tap does it. Returns true on that second tap. */
+  function tapTwice(btn, ask) {
+    if (btn._armed) {
+      clearTimeout(btn._armed); btn._armed = null;
+      btn.classList.remove("armed"); btn.textContent = btn._label;
+      return true;
+    }
+    btn._label = btn.textContent;
+    btn.textContent = ask;
+    btn.classList.add("armed");
+    btn._armed = setTimeout(() => { btn._armed = null; btn.classList.remove("armed"); btn.textContent = btn._label; }, 4000);
+    return false;
+  }
+
   function el(tag, props, kids) {
     const n = document.createElement(tag);
     if (props) for (const k in props) {
@@ -563,8 +581,8 @@
           row.appendChild(el("button", {
             class: "bullet-x", type: "button", title: "Remove this line",
             "aria-label": "Remove this line", text: "\u00d7",
-            onclick: async () => {
-              if (!window.confirm("Remove this line from the feed?")) return;
+            onclick: async (e) => {
+              if (!tapTwice(e.currentTarget, "Remove?")) return;
               try { await window.ChamLive.deleteUpdate(i.id); }
               catch (err) { window.alert("Could not remove it. " + (err.code || err.message)); }
             }
@@ -758,8 +776,8 @@
         }
       });
       const drop = el("button", { class: "act ghost", type: "button", text: "Discard it",
-        onclick: async () => {
-          if (!window.confirm("Throw away the chat wrap for " + pretty(d.date) + "?")) return;
+        onclick: async (e) => {
+          if (!tapTwice(e.currentTarget, "Tap again to discard")) return;
           try { await window.ChamLive.setDraftStatus(d.id, "discarded"); }
           catch (err) { msg.textContent = "Did not save. " + (err.code || err.message); msg.classList.add("bad"); }
         } });
@@ -798,7 +816,7 @@
           const t = text.value.trim().replace(/\s+/g, " ");
           msg.classList.remove("bad");
           if (!t) { msg.textContent = "Type the message first."; msg.classList.add("bad"); return; }
-          if (!confirm("Send this to everyone's phone?\n\n\u201c" + t + "\u201d")) return;
+          if (!tapTwice(send, "Tap again to send \u2192")) return;
           send.disabled = true; send.textContent = "Sending\u2026";
           try {
             const me = SESSION.personKey;
@@ -1261,8 +1279,8 @@
     if (SESSION && SESSION.admin) {
       row.appendChild(el("button", {
         class: "act ghost danger", text: "Delete",
-        onclick: async () => {
-          if (!window.confirm("Delete “" + t.title + "” for good?")) return;
+        onclick: async (e) => {
+          if (!tapTwice(e.currentTarget, "Tap again to delete")) return;
           try { await window.ChamLive.deleteTask(t.id); }
           catch (err) { flash(row, "Did not delete. " + (err.code || err.message)); }
         }
@@ -1892,8 +1910,8 @@
       if (SESSION.admin || SESSION.personKey === ph.who) {
         foot.appendChild(el("button", {
           class: "act ghost danger", type: "button", text: "remove",
-          onclick: async () => {
-            if (!window.confirm("Remove this photo?")) return;
+          onclick: async (e) => {
+            if (!tapTwice(e.currentTarget, "tap again to remove")) return;
             try { await window.ChamLive.deletePhoto(ph.id); }
             catch (err) { window.alert("Could not remove it. " + (err.code || err.message)); }
           }
@@ -2598,8 +2616,8 @@
         if (canManageMoney() && m.owed && !m.repaid) acts.appendChild(el("button", { class: "lg-a", type: "button", text: "Paid back",
           onclick: () => window.ChamLive.setMoneyStatus([m.id], "repaid").catch((e) => flash(acts, "Did not save. " + (e.code || e.message))) }));
         if (canManageMoney() || (isMine && m.status === "new")) acts.appendChild(el("button", { class: "lg-a danger", type: "button", text: "Delete",
-          onclick: async () => {
-            if (!window.confirm("Delete \u201c" + m.description + "\u201d (" + fmtVnd(m.amount) + ")?")) return;
+          onclick: async (e) => {
+            if (!tapTwice(e.currentTarget, "Tap again")) return;
             try { await window.ChamLive.deleteMoney(m.id); }
             catch (e) { flash(acts, "Did not delete. " + (e.code || e.message)); }
           } }));
