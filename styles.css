@@ -1240,3 +1240,4 @@
   .me-list li b { color: var(--ink); }
   .me-list li.late { border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); }
   .tab .n.hot { background: var(--marigold); color: #1b1405; }
+  @media (max-width: 620px) { .me-pts { align-items: flex-start; flex-basis: 100%; } }
