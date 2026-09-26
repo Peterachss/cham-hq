@@ -204,6 +204,28 @@
 
   function liveTasks() { return TASKS.filter((t) => t.status !== "done"); }
 
+  /* A job with a due date IS a date in the calendar. Anything without one
+     drops into "Waiting on a date", which is the honest place for it. */
+  function calEvents() {
+    const fromTasks = TASKS.filter((t) => t.due).map((t) => ({
+      date: t.due,
+      title: t.title,
+      sub: (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + (t.note ? " \u00b7 " + t.note : ""),
+      state: t.status === "done" ? "past" : (t.due < TODAY ? "late" : "confirmed"),
+      task: true
+    }));
+    return EVENTS.concat(fromTasks);
+  }
+
+  function calUndated() {
+    const fromTasks = TASKS.filter((t) => !t.due && t.status !== "done").map((t) => ({
+      title: t.title,
+      sub: (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + " \u00b7 nobody has set a date",
+      task: true
+    }));
+    return UNDATED.concat(fromTasks);
+  }
+
   function renderGlance() {
     const live = liveTasks();
     const late = TASKS.filter((t) => t.status === "late" || (t.due && t.status !== "done" && t.due < TODAY));
@@ -215,13 +237,13 @@
     gl.className = "v" + (late.length ? " warn" : "");
     gl.textContent = late.length ? late.length + (late.length === 1 ? " job past its date" : " jobs past their date") : "Nothing overdue";
 
-    const next = EVENTS.filter((e) => e.date >= TODAY && e.state !== "past").sort((a,b) => a.date < b.date ? -1 : 1)[0];
+    const next = calEvents().filter((e) => e.date >= TODAY && e.state !== "past").sort((a,b) => a.date < b.date ? -1 : 1)[0];
     $("g-next").textContent = next ? pretty(next.date) + " · " + next.title : "Nothing dated";
 
     $("g-block").textContent = "School approval for the sale";
 
     $("n-updates").textContent = DAYS.length;
-    $("n-calendar").textContent = EVENTS.filter((e) => e.date >= TODAY && e.state !== "past").length + UNDATED.length;
+    $("n-calendar").textContent = calEvents().filter((e) => e.date >= TODAY && e.state !== "past").length + calUndated().length;
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
 
@@ -442,8 +464,9 @@
 
     const lead = (new Date(y, m, 1).getDay() + 6) % 7;
     const start = new Date(y, m, 1 - lead);
+    const ALL = calEvents();
     const byDay = {};
-    EVENTS.forEach((e) => { (byDay[e.date] = byDay[e.date] || []).push(e); });
+    ALL.forEach((e) => { (byDay[e.date] = byDay[e.date] || []).push(e); });
 
     for (let i = 0; i < 42; i++) {
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
@@ -462,8 +485,8 @@
 
     const rail = $("rail");
     rail.innerHTML = "";
-    const onDay = EVENTS.filter((e) => e.date === S.selected);
-    const list = onDay.length ? onDay : EVENTS.filter((e) => e.date >= TODAY).sort((a,b) => a.date < b.date ? -1 : 1);
+    const onDay = ALL.filter((e) => e.date === S.selected);
+    const list = onDay.length ? onDay : ALL.filter((e) => e.date >= TODAY).sort((a,b) => a.date < b.date ? -1 : 1);
     $("rail-head").textContent = onDay.length ? "On " + pretty(S.selected) : "Coming up";
     if (!list.length) rail.appendChild(el("div", { class: "empty-state", text: "Nothing on this day." }));
     list.forEach((e) => {
@@ -474,8 +497,9 @@
           el("div", { class: "t", text: e.title }),
           el("div", { class: "sub", text: e.sub }),
           el("div", { class: "meta", style: "margin-top:5px" }, [
-            el("span", { class: "pill " + (e.state === "target" ? "doing" : e.state === "past" ? "" : "done"),
-                         text: e.state === "target" ? "not locked" : e.state === "past" ? "happened" : "confirmed" }),
+            el("span", { class: "pill " + (e.state === "late" ? "late" : e.state === "target" ? "doing" : e.state === "past" ? "" : "done"),
+                         text: e.state === "late" ? "overdue" : e.state === "target" ? "not locked"
+                             : e.state === "past" ? "happened" : (e.task ? "a job, due" : "confirmed") }),
             el("span", { class: "pill due", text: relDay(e.date) })
           ])
         ])
@@ -483,8 +507,9 @@
     });
 
     const un = $("undated");
-    if (!un.childElementCount) {
-      UNDATED.forEach((u) => un.appendChild(el("div", { class: "card evrow" }, [
+    un.replaceChildren();
+    {
+      calUndated().forEach((u) => un.appendChild(el("div", { class: "card evrow" }, [
         el("div", { class: "d", style: "min-width:46px" }, [el("b", { text: "?" })]),
         el("div", { style: "min-width:0" }, [
           el("div", { class: "t", text: u.title }),
@@ -595,6 +620,13 @@
       }));
     });
 
+    if (SESSION && SESSION.admin) {
+      row.appendChild(el("button", {
+        class: "act ghost", type: "button", text: "Edit",
+        onclick: (e) => openEditor(t, e.currentTarget.closest("article"))
+      }));
+    }
+
     row.appendChild(el("button", {
       class: "act ghost", text: t.note ? "Edit note" : "Add note",
       onclick: async () => {
@@ -616,6 +648,51 @@
       }));
     }
     return row;
+  }
+
+  /** Swap a job's card for a little form. Admins only - the security rules
+      refuse a title or date change from anybody else, so there is no point
+      showing it to them. */
+  function openEditor(t, card) {
+    if (!card || card.querySelector(".tedit")) return;
+    const body = card.querySelector(".body");
+    body.hidden = true;
+
+    const title = el("input", { class: "ad-in wide", type: "text", value: t.title, "aria-label": "What the job is" });
+    const due = el("input", { class: "ad-in", type: "date", value: t.due || "", "aria-label": "Due date" });
+    const msg = el("span", { class: "ad-msg" });
+
+    const close = () => { form.remove(); body.hidden = false; };
+
+    const save = el("button", { class: "au-go", type: "button", text: "Save",
+      onclick: async () => {
+        if (!title.value.trim()) { msg.textContent = "It needs a title."; msg.classList.add("bad"); return; }
+        save.disabled = true; save.textContent = "Saving\u2026";
+        try {
+          await window.ChamLive.editTask(t.id, { title: title.value.trim(), due: due.value || null });
+          close();
+        } catch (err) {
+          msg.textContent = "Did not save. " + (err.code || err.message);
+          msg.classList.add("bad");
+          save.disabled = false; save.textContent = "Save";
+        }
+      }
+    });
+
+    const form = el("div", { class: "tedit" }, [
+      el("div", { class: "adrow" }, [title, due, save,
+        el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: close })]),
+      el("div", { class: "adrow" }, [
+        el("span", { class: "ad-msg", text: due.value ? "Clear the date to take it off the calendar." : "Give it a date and it appears on the calendar." }),
+        msg
+      ])
+    ]);
+    [title, due].forEach((i) => i.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") save.click();
+      if (e.key === "Escape") close();
+    }));
+    card.appendChild(form);
+    title.focus();
   }
 
   function flash(node, msg) {

@@ -517,3 +517,8 @@
   }
   .bullet:hover .bullet-x, .bullet-x:focus-visible { opacity: 1; }
   .bullet-x:hover { color: var(--clay); }
+
+  /* a job past its due date, shown on the calendar */
+  .ev.late { background: var(--clay-soft); color: var(--clay); }
+  .evrow.late { border-left: 3px solid var(--clay); }
+  .tedit { padding: 12px 14px 14px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 8px; }

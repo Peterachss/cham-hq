@@ -230,6 +230,13 @@ if (!CONFIGURED) {
       if (status === "done") patch.doneAt = serverTimestamp();
       await updateDoc(doc(db, "tasks", id), patch);
     },
+    /** admins only - the rules stop anyone else changing these */
+    async editTask(id, patch) {
+      const out = { updatedAt: serverTimestamp() };
+      if (patch.title !== undefined) out.title = patch.title;
+      if (patch.due !== undefined) out.due = patch.due || null;
+      await updateDoc(doc(db, "tasks", id), out);
+    },
     async setNote(id, note) {
       await updateDoc(doc(db, "tasks", id), { note, updatedAt: serverTimestamp() });
     },
