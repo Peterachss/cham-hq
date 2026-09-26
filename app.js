@@ -2422,34 +2422,6 @@
     ]));
   }
 
-  /* ------------------------------------------------------------------ *
-   * the clock's spot: under the "chat read to" date on wide screens, in
-   * the header on phones. Measured only when the header changes size -
-   * never on every render, which would force the browser to lay the page
-   * out again each time.
-   * ------------------------------------------------------------------ */
-  (function placeClock() {
-    const top = document.querySelector("header.top");
-    if (!top) return;
-    const fit = () => {
-      const R = document.documentElement.style;
-      const br = top.querySelector(".brandrow");
-      if (br) R.setProperty("--brand-b", Math.round(br.getBoundingClientRect().bottom) + "px");
-      const st = $("stamp");
-      if (st && st.offsetParent) {
-        const b = st.getBoundingClientRect();
-        R.setProperty("--stamp-b", Math.round(b.bottom) + "px");
-        R.setProperty("--stamp-r", Math.max(6, Math.round(document.documentElement.clientWidth - b.right)) + "px");
-      }
-    };
-    fit();
-    if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => requestAnimationFrame(fit));
-      ro.observe(top);
-      if ($("stamp")) ro.observe($("stamp"));    // its text arrives with the data
-    } else window.addEventListener("resize", fit);
-  })();
-
   /* The clock: Ho Chi Minh City time, ticking every second, whatever
      time zone the phone happens to be in. Pauses while the tab is hidden. */
   (function mascotClock() {
