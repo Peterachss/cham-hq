@@ -100,6 +100,7 @@
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
+  const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
      replacing it, so the chat history from before any of this existed
@@ -826,12 +827,16 @@
     const list = $("an-list");
     list.replaceChildren();
     (ANNOUNCES || []).forEach((a) => {
-      const state = a.status === "sent"
-        ? (a.sentTo ? "Sent to " + a.sentTo + " " + (a.sentTo === 1 ? "person" : "people") : "Sent \u2014 nobody else has notifications on yet")
-        : "Sending\u2026";
+      const nudge = a.kind === "nudge";
+      const toName = nudge ? (PEOPLE[a.to] ? PEOPLE[a.to].name : a.to) : "";
+      const state = a.status !== "sent" ? "Sending\u2026"
+        : nudge ? (a.sentTo ? "Buzzed " + toName : toName + " has notifications off")
+        : (a.sentTo ? "Sent to " + a.sentTo + " " + (a.sentTo === 1 ? "person" : "people") : "Sent \u2014 nobody else has notifications on yet");
       const when = a.at.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-      list.appendChild(el("li", { class: "an-item" + (a.status === "sent" ? " sent" : "") }, [
-        el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by) + " \u00b7 " + when }),
+      const missed = a.status === "sent" && !a.sentTo;
+      list.appendChild(el("li", { class: "an-item" + (a.status === "sent" ? " sent" : "") + (missed ? " missed" : "") }, [
+        el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by)
+          + (nudge ? " \ud83d\udc49 nudged " + toName : "") + " \u00b7 " + when }),
         el("span", { class: "an-t", text: a.text }),
         el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state })
       ]));
@@ -1172,6 +1177,34 @@
         class: "act ghost", type: "button", text: "Edit",
         onclick: (e) => openEditor(t, e.currentTarget.closest("article"))
       }));
+      /* Nudge: buzz the owner's phone about this job. Not on your own jobs,
+         the group's, or finished ones; once per job every ten minutes. */
+      if (t.status !== "done" && t.who && t.who !== "team" && t.who !== SESSION.personKey
+          && PEOPLE[t.who] && window.ChamLive && window.ChamLive.nudge) {
+        const recent = Date.now() - (NUDGED[t.id] || 0) < 10 * 60 * 1000;
+        row.appendChild(el("button", {
+          class: "act nudge" + (recent ? " sent" : ""), type: "button", disabled: recent,
+          text: recent ? "Nudged \u2713" : "\ud83d\udc49 Nudge",
+          title: "Buzz " + PEOPLE[t.who].name + "\u2019s phone about this job",
+          onclick: async (e) => {
+            const b = e.currentTarget;
+            const name = PEOPLE[t.who].name;
+            const late = t.due && t.due < TODAY;
+            const text = t.title + (t.due ? (late ? " \u2014 past its date (" + relDay(t.due) + ")" : " \u2014 due " + relDay(t.due)) : "");
+            b.disabled = true; b.textContent = "Nudging\u2026";
+            try {
+              const me = SESSION.personKey;
+              await window.ChamLive.nudge(text, t.who, me, PEOPLE[me] ? PEOPLE[me].name : me, t.id);
+              NUDGED[t.id] = Date.now();
+              b.textContent = "Nudged \u2713"; b.classList.add("sent");
+              toast("Nudge sent to " + name);
+            } catch (err) {
+              b.disabled = false; b.textContent = "\ud83d\udc49 Nudge";
+              flash(row, "Couldn\u2019t nudge. " + (err.code || err.message));
+            }
+          }
+        }));
+      }
     }
 
     /* How far along, in the owner's own words. Marking it Done sets this

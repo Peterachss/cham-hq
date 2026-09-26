@@ -312,6 +312,7 @@ if (!CONFIGURED) {
           qs.forEach((d) => {
             const v = d.data();
             rows.push({ id: d.id, text: v.text || "", by: v.by || "", status: v.status || "pending",
+              kind: v.kind || "announce", to: v.to || null,
               sentTo: typeof v.sentTo === "number" ? v.sentTo : null,
               at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : new Date() });
           });
@@ -419,6 +420,12 @@ if (!CONFIGURED) {
     async announce(text, by, byName) {
       await addDoc(collection(db, "announcements"), {
         text, by, byName: byName || "", status: "pending",
+        createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
+      });
+    },
+    async nudge(text, to, by, byName, taskId) {
+      await addDoc(collection(db, "announcements"), {
+        kind: "nudge", to, text, by, byName: byName || "", task: taskId || null, status: "pending",
         createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
       });
     },

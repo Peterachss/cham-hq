@@ -16,6 +16,9 @@ can show "Sent to 4 people".
 push.py also calls send_pending() every fifteen minutes, so an announcement
 still goes out if this watcher is not running - just not straight away.
 
+A nudge (an admin tapping Nudge on somebody's job) is the same thing with
+a "to": it goes to that one person only, as "👉 Bach nudged you".
+
 A message is claimed in a transaction before sending, so two senders
 running at once can never push the same announcement twice.
 """
@@ -77,12 +80,19 @@ def send_pending(db, key, dry=False, say=log):
         name = by_key.get(by, {}).get("name") or a.get("byName") or "Chạm HQ"
         P = push.Pusher(db, key, dry)
         people = 0
-        for who, s in subs.items():
-            if who == by:
-                continue                                # you don't need your own message
-            if P.send(s, "📣 " + name, text, url="./#updates", tag="announce-" + d.id, urgent=True):
-                people += 1
-        say(f"announcement from {name} -> {people} people ({P.sent} devices, {P.failed} failed): {text[:60]}")
+        to = a.get("to")
+        if a.get("kind") == "nudge" and to:
+            if to in subs and P.send(subs[to], "👉 " + name + " nudged you", text,
+                                     url="./#tasks", tag="nudge-" + d.id, urgent=True):
+                people = 1
+            say(f"nudge from {name} -> {to}: {'delivered' if people else 'NOT delivered (notifications off)'}: {text[:60]}")
+        else:
+            for who, s in subs.items():
+                if who == by:
+                    continue                            # you don't need your own message
+                if P.send(s, "📣 " + name, text, url="./#updates", tag="announce-" + d.id, urgent=True):
+                    people += 1
+            say(f"announcement from {name} -> {people} people ({P.sent} devices, {P.failed} failed): {text[:60]}")
         if not dry:
             d.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP,
                                 "sentTo": people, "devices": P.sent, "failed": P.failed})

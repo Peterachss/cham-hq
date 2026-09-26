@@ -138,6 +138,13 @@ const cases = [
   ["stranger cannot read announcements",     false, () => getDocs(collection(as(STRANGER), "announcements"))],
   ["admin cannot mark one sent",             false, () => updateDoc(doc(as(PETER), "announcements/a-1"), { status: "sent" })],
   ["admin cannot delete one",                false, () => deleteDoc(doc(as(PETER), "announcements/a-1"))],
+
+  // ---------------------------------------------------------------- nudges
+  ["admin nudges somebody",                  true,  () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "nudge", to: "emily", text: "Film the reel, due tomorrow" }))],
+  ["member cannot nudge",                    false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "nudge", to: "bach" }))],
+  ["a nudge needs somebody to go to",        false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "nudge" }))],
+  ["cannot nudge yourself",                  false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "nudge", to: "bach" }))],
+  ["no made-up kinds",                       false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "shout" }))],
 ];
 
 let failed = 0;

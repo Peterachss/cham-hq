@@ -93,9 +93,10 @@ service cloud.firestore {
       allow create:               if false;
     }
 
-    // The Announce box. Admins file a message under their own name as
-    // "pending"; the sender (service account) pushes it to everyone and
-    // marks it sent. Nobody on the site can edit one or pretend it was sent.
+    // The Announce box, and Nudge on a job. Admins file a message under
+    // their own name as "pending"; the sender (service account) pushes it -
+    // to everyone, or for a nudge (with "to") to that one person - and marks
+    // it sent. Nobody on the site can edit one or pretend it was sent.
     match /announcements/{annId} {
       allow read:   if isMember();
       allow create: if isAdmin()
@@ -104,7 +105,12 @@ service cloud.firestore {
                     && request.resource.data.status == 'pending'
                     && request.resource.data.text is string
                     && request.resource.data.text.size() > 0
-                    && request.resource.data.text.size() <= 300;
+                    && request.resource.data.text.size() <= 300
+                    && request.resource.data.get('kind', 'announce') in ['announce', 'nudge']
+                    && (request.resource.data.get('kind', 'announce') == 'announce'
+                        || (request.resource.data.to is string
+                            && request.resource.data.to.size() > 0
+                            && request.resource.data.to != me().personKey));
       allow update, delete: if false;
     }
 
