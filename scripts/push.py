@@ -10,6 +10,8 @@ last one and tells the right people, once:
   money to log       -> finance, when new lines pile up for the sheet
   7am                -> anyone with something overdue, due today or tomorrow
   9pm                -> everyone: a round-up of what the club got done today
+  Monday morning     -> everyone: Judy's weekly report - officer of the
+                        week, who is most behind, what is due this week
 
     python scripts/push.py              the real thing
     python scripts/push.py --dry-run    print what would go out, send nothing
@@ -325,6 +327,89 @@ def evening(db, P, by_key, subs, meta, today):
         meta["eveningDate"] = iso
 
 
+# Same rules as the Points chart in app.js - change one, change both.
+PTS = {"on_time": 10, "no_date": 5, "late": 3, "overdue": -5}
+
+
+def done_day(t):
+    ts = t.get("doneAt")
+    try:
+        return ts.astimezone(VN).date() if ts else None
+    except (AttributeError, ValueError):
+        return None
+
+
+def job_points(t, today):
+    due = None
+    try:
+        due = dt.date.fromisoformat(t["due"]) if t.get("due") else None
+    except ValueError:
+        pass
+    if t.get("status") != "done":
+        return PTS["overdue"] if due and due < today else 0
+    d = done_day(t)
+    if not due or not d:
+        return PTS["no_date"]
+    return PTS["on_time"] if d <= due else PTS["late"]
+
+
+def weekly(db, P, by_key, subs, meta, today):
+    """Monday: Judy's report. Officer of the week, who's most behind, and
+    what the week holds - with each person's own count on the end."""
+    week = today.isocalendar()
+    tag = f"{week[0]}-W{week[1]:02d}"
+    if meta.get("weeklyDate") == tag:
+        return
+    mon = today - dt.timedelta(days=today.weekday())
+    last_mon, sun = mon - dt.timedelta(days=7), mon + dt.timedelta(days=6)
+
+    tasks = [d.to_dict() or {} for d in db.collection("tasks").stream()]
+    active = {k for k, m in by_key.items()}
+    last_week, late, due_week, mine = {}, {}, 0, {}
+    for t in tasks:
+        who = t.get("who")
+        if t.get("status") == "done":
+            d = done_day(t)
+            if who in active and d and last_mon <= d < mon:
+                last_week[who] = last_week.get(who, 0) + job_points(t, today)
+            continue
+        try:
+            due = dt.date.fromisoformat(t["due"]) if t.get("due") else None
+        except ValueError:
+            due = None
+        if not due:
+            continue
+        if due < today and who in active:
+            late[who] = late.get(who, 0) + 1
+        elif today <= due <= sun:
+            due_week += 1
+            mine[who] = mine.get(who, 0) + 1
+
+    name = lambda k: by_key.get(k, {}).get("name", k)
+    both = lambda ks: " & ".join(name(k) for k in ks)
+    parts = []
+    top = max(last_week.values(), default=0)
+    if top > 0:
+        parts.append(f"👮 Officer of the week: {both([k for k, v in last_week.items() if v == top])} ({top} pts).")
+    else:
+        parts.append("👮 No officer this week — nobody finished a job last week.")
+    most = max(late.values(), default=0)
+    if most:
+        parts.append(f"🐌 Most late: {both([k for k, v in late.items() if v == most])} ({most}).")
+    else:
+        parts.append("Nobody’s late. Suspicious.")
+    parts.append(f"This week: {due_week} job{'s' if due_week != 1 else ''} due")
+    common = " ".join(parts)
+
+    log(f"  monday report: {common}")
+    for who, s in subs.items():
+        n = mine.get(who, 0)
+        body = short(common + (f", {n} yours." if n else ", none yours."), 178)
+        P.send(s, "Judy’s Monday report", body, url="./#tracker", tag="weekly")
+    if not P.dry:
+        meta["weeklyDate"] = tag
+
+
 def initialise(db, meta, dry):
     """First run ever: everything that already exists counts as told."""
     n = 0
@@ -348,6 +433,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--test", metavar="EMAIL")
+    ap.add_argument("--weekly-now", action="store_true", help="build the Monday report today (use with --dry-run to preview)")
     args = ap.parse_args()
 
     db = firebase()
@@ -389,6 +475,10 @@ def main():
     drafts(db, P, by_key, subs)
     if now.hour in MORNING:
         morning(db, P, by_key, subs, meta, today)
+        if today.weekday() == 0 or args.weekly_now:
+            weekly(db, P, by_key, subs, meta, today)
+    elif args.weekly_now:
+        weekly(db, P, by_key, subs, meta, today)
     if now.hour in EVENING:
         evening(db, P, by_key, subs, meta, today)
 

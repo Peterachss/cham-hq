@@ -201,7 +201,7 @@ if (!CONFIGURED) {
             // when it was ticked off, as YYYY-MM-DD, so the tracker can tell
             // whether it landed before or after its due date
             doneOn: t.doneAt && t.doneAt.toDate
-              ? t.doneAt.toDate().toISOString().slice(0, 10)
+              ? t.doneAt.toDate().toLocaleDateString("en-CA")   // YYYY-MM-DD, local day
               : null
           });
         });

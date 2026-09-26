@@ -1253,6 +1253,109 @@
    * is behind, and what is coming up. Progress is an ordered scale, so it
    * uses one hue getting darker, not four colours competing.
    * ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ *
+   * points
+   *
+   * Same rules as scripts/push.py, which sends the Monday report - change
+   * one, change both.
+   *   finished by the due date      +10
+   *   finished, no date / unknown   +5
+   *   finished late                 +3   (still better than not finishing)
+   *   open and past its date        -5   each, for as long as it stays late
+   * Officer of the week: most points from jobs finished last Mon-Sun.
+   * ------------------------------------------------------------------ */
+  const PTS = { onTime: 10, noDate: 5, late: 3, overdue: -5 };
+  const shiftDay = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return isoDay(d); };
+  const weekStart = (iso) => shiftDay(iso, -((new Date(iso + "T00:00:00").getDay() + 6) % 7));
+  function jobPoints(t) {
+    if (t.status !== "done") return (t.due && t.due < TODAY) ? PTS.overdue : 0;
+    if (!t.due || !t.doneOn) return PTS.noDate;
+    return t.doneOn <= t.due ? PTS.onTime : PTS.late;
+  }
+  function pointsTable() {
+    const mon = weekStart(TODAY), lastMon = shiftDay(mon, -7);
+    const P = {};
+    const row = (k) => P[k] || (P[k] = { key: k, total: 0, week: 0, lastWeek: 0, onTime: 0, late: 0, overdue: 0 });
+    TASKS.forEach((t) => {
+      if (!t.who || t.who === "team" || !PEOPLE[t.who] || /^Left /.test(PEOPLE[t.who].role || "")) return;
+      const p = jobPoints(t), r = row(t.who);
+      r.total += p;
+      if (t.status !== "done") {
+        if (p < 0) { r.overdue++; r.week += p; }
+        return;
+      }
+      if (p === PTS.onTime) r.onTime++;
+      if (p === PTS.late) r.late++;
+      if (t.doneOn && t.doneOn >= mon) r.week += p;
+      else if (t.doneOn && t.doneOn >= lastMon) r.lastWeek += p;
+    });
+    const rows = Object.values(P);
+    const topLast = Math.max(0, ...rows.map((r) => r.lastWeek));
+    const officers = topLast > 0 ? rows.filter((r) => r.lastWeek === topLast).map((r) => r.key) : [];
+    const topWeek = Math.max(0, ...rows.map((r) => r.week));
+    const leaders = topWeek > 0 ? rows.filter((r) => r.week === topWeek).map((r) => r.key) : [];
+    return { rows, officers, topLast, leaders, topWeek };
+  }
+
+  function renderPoints(box) {
+    const pt = pointsTable();
+    const sec = el("section", { class: "viz" }, [
+      el("h3", { class: "viz-h", text: "Points" }),
+      el("p", { class: "viz-sub",
+        text: "+10 finished by the date \u00b7 +5 no date \u00b7 +3 finished late \u00b7 \u22125 for every job sitting past its date. Officer of the week is whoever scored most last Monday to Sunday." })
+    ]);
+
+    const who = (ks) => ks.map((k) => PEOPLE[k].name).join(" & ");
+    const badge = el("div", { class: "officer" }, [
+      el("span", { class: "officer-ic", "aria-hidden": "true", text: "\ud83d\udc6e" }),
+      el("div", { class: "officer-t" }, pt.officers.length
+        ? [el("span", { class: "officer-k", text: "Officer of the week" }),
+           el("span", { class: "officer-n", text: who(pt.officers) }),
+           el("span", { class: "officer-s", text: pt.topLast + " points last week" })]
+        : [el("span", { class: "officer-k", text: "Officer of the week" }),
+           el("span", { class: "officer-n", text: "Nobody yet" }),
+           el("span", { class: "officer-s", text: "Nobody finished a job last week. Next Monday it could be you." })]),
+      pt.leaders.length ? el("div", { class: "officer-now" }, [
+        el("span", { class: "officer-k", text: "Leading this week" }),
+        el("span", { class: "officer-n sm", text: who(pt.leaders) + " \u00b7 " + pt.topWeek })]) : null
+    ]);
+    sec.appendChild(badge);
+
+    const view = S.pointsView || "total";
+    const tog = el("div", { class: "filters pts-tog" });
+    [["total", "All time"], ["week", "This week"]].forEach(([k, label]) => tog.appendChild(el("button", {
+      class: "chipbtn plain", "aria-pressed": String(view === k), text: label,
+      onclick: () => { S.pointsView = k; renderTracker(); }
+    })));
+    sec.appendChild(tog);
+
+    const rows = pt.rows.slice().sort((a, b) => b[view] - a[view] || b.onTime - a.onTime
+      || PEOPLE[a.key].name.localeCompare(PEOPLE[b.key].name));
+    const most = Math.max(1, ...rows.map((r) => Math.abs(r[view])));
+    const plot = el("div", { class: "viz-plot" });
+    rows.forEach((r) => {
+      const v = r[view];
+      const bar = el("button", {
+        class: "pbar" + (v < 0 ? " neg" : ""), type: "button",
+        style: "width:" + (v ? Math.max(2, Math.round(Math.abs(v) / most * 100)) : 0) + "%",
+        "aria-label": PEOPLE[r.key].name + ": " + v + " points"
+      });
+      tip(bar, [PEOPLE[r.key].name, v + " point" + (Math.abs(v) === 1 ? "" : "s") + (view === "week" ? " this week" : " all time"),
+                r.onTime + " on time \u00b7 " + r.late + " late \u00b7 " + r.overdue + " past its date now"]);
+      // ties share a medal: rank = how many different scores beat this one
+      const rank = new Set(rows.map((x) => x[view]).filter((x) => x > v)).size;
+      const medal = view === "total" && v > 0 ? ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49"][rank] : null;
+      plot.appendChild(el("div", { class: "hrow" }, [
+        el("span", { class: "hname" }, [avatar(r.key), el("span", {
+          text: PEOPLE[r.key].name + (pt.officers.includes(r.key) ? " \ud83d\udc6e" : "") + (medal ? " " + medal : "") })]),
+        el("div", { class: "htrack" }, [bar]),
+        el("span", { class: "hval" + (v < 0 ? " bad" : ""), text: (v > 0 ? "+" : "") + v })
+      ]));
+    });
+    sec.appendChild(plot);
+    box.appendChild(sec);
+  }
+
   function statsFor(key) {
     const mine = TASKS.filter((t) => t.who === key);
     const isDone = (t) => t.status === "done";
@@ -1365,6 +1468,9 @@
 
     const box = $("tracker");
     box.replaceChildren();
+    const pbox = $("points");
+    pbox.replaceChildren();
+    renderPoints(pbox);
 
     /* ----- chart 1: workload and progress ----- */
     const most = Math.max(1, ...rows.map((r) => r.total));
@@ -2214,6 +2320,10 @@
       return max ? { n: max, who: Object.keys(m).filter((k) => m[k] === max) } : null;
     };
     const best = top(done), worst = top(late);
+    const pt = pointsTable();
+    if (pt.officers.length) out.push({ go: ["tracker", "See the points"],
+      text: "\ud83d\udc6e Officer of the week: " + andList(pt.officers) + " (" + pt.topLast + " pts). "
+        + pick(["Salute.", "Badge well earned.", "Everyone else: this could be you.", "Doing the actual work."]) });
     if (best) out.push({ tone: "ok", go: ["tracker", "See the tracker"],
       text: "\ud83c\udfc6 Best: " + andList(best.who) + ", " + best.n + " job" + (best.n === 1 ? "" : "s") + " done. "
         + pick(["Carrots for " + (best.who.length > 1 ? "them" : nameOf(best.who[0])) + ".",
