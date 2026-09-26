@@ -522,3 +522,63 @@
   .ev.late { background: var(--clay-soft); color: var(--clay); }
   .evrow.late { border-left: 3px solid var(--clay); }
   .tedit { padding: 12px 14px 14px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 8px; }
+
+  /* ------------------------------------------------------------------ *
+   * photos
+   * ------------------------------------------------------------------ */
+  .ad-fixed { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }
+  .ad-in[type="file"] { padding: 5px 8px; max-width: 100%; }
+
+  .pgrid {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .pcard {
+    margin: 0; background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  }
+  .ptile {
+    appearance: none; border: 0; padding: 0; cursor: zoom-in; display: block;
+    width: 100%; background: var(--slate-soft); line-height: 0;
+  }
+  .ptile img { width: 100%; height: 150px; object-fit: cover; display: block; }
+  .ptile:focus-visible { outline: 2px solid var(--jade); outline-offset: -2px; }
+  .pfoot {
+    display: flex; align-items: center; gap: 7px; padding: 8px 10px;
+    font-size: 12.5px; color: var(--muted);
+  }
+  .pcap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+  .pfoot .act { flex: 0 0 auto; }
+
+  .lightbox {
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(8, 12, 11, .88);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 24px;
+  }
+  .lightbox[hidden] { display: none; }
+  .lightbox img { max-width: 100%; max-height: 78vh; border-radius: 8px; }
+  .lb-x {
+    position: absolute; top: 14px; right: 16px;
+    appearance: none; border: 0; background: none; cursor: pointer;
+    color: #fff; font-size: 30px; line-height: 1; padding: 4px 10px;
+  }
+  .lb-bar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    justify-content: center; color: #e7ebe7; font-size: 13px; max-width: 100%;
+  }
+  .lb-bar a {
+    color: var(--jade); font-weight: 600; text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* how far along a job is */
+  .tprog { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+  .tprog-track { flex: 1 1 auto; height: 5px; border-radius: 999px; background: var(--slate-soft); overflow: hidden; }
+  .tprog-track i { display: block; height: 100%; background: var(--jade); border-radius: 999px; }
+  .tprog-n { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+
+  .slwrap { display: inline-flex; align-items: center; gap: 7px; flex: 1 1 170px; min-width: 150px; }
+  .sl-k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .sl { flex: 1 1 auto; min-width: 70px; accent-color: var(--jade); height: 20px; }
+  .sl-n { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 34px; text-align: right; }

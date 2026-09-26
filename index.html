@@ -32,6 +32,7 @@
       <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="true" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
+      <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
       <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
     </nav>
   </div>
@@ -93,6 +94,14 @@
     <div id="board"></div>
   </section>
 
+  <section id="view-photos" role="tabpanel" aria-labelledby="tab-photos" tabindex="0" hidden>
+    <h2 class="sec">Photos</h2>
+    <p class="hint">Evidence for CAS, and a record of what Chạm actually did. Only signed-in members can see these — they are not on the public page. Pictures are shrunk before they are saved, so keep your originals for the CAS write-up.</p>
+    <div id="photo-add" class="admin" hidden></div>
+    <div class="filters" id="photo-filters"></div>
+    <div id="photo-grid"></div>
+  </section>
+
   <section id="view-tracker" role="tabpanel" aria-labelledby="tab-tracker" tabindex="0" hidden>
     <h2 class="sec">How everyone is doing</h2>
     <p class="hint">Everything finished, everything still open, and how far past its date. Everyone signed in sees the same numbers. Jobs with no due date can never be late, so they only count towards the open total.</p>
@@ -105,6 +114,12 @@
     <div class="links" id="links"></div>
     <span id="foot-note"></span>
   </footer>
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-x" id="lb-close" aria-label="Close">&times;</button>
+  <img id="lb-img" alt="" />
+  <div class="lb-bar"><span id="lb-cap"></span><a id="lb-dl" download="cham-photo.jpg">Save it</a></div>
 </div>
 
 <div class="install" id="install" hidden>

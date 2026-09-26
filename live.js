@@ -60,7 +60,7 @@ if (!CONFIGURED) {
     return n;
   };
 
-  let unsubTasks = null, unsubUpdates = null;
+  let unsubTasks = null, unsubUpdates = null, unsubPhotos = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -130,11 +130,13 @@ if (!CONFIGURED) {
   onAuthStateChanged(auth, async (user) => {
     if (unsubTasks) { unsubTasks(); unsubTasks = null; }
     if (unsubUpdates) { unsubUpdates(); unsubUpdates = null; }
+    if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
       window.ChamHQ.setTasks(null);       // fall back to data.json
       window.ChamHQ.setUpdates(null);
+      window.ChamHQ.setPhotos(null);
       showSignedOut();
       return;
     }
@@ -183,6 +185,7 @@ if (!CONFIGURED) {
             status: t.status || "open",
             due: t.due || null,
             since: t.since || null,
+            progress: typeof t.progress === "number" ? t.progress : (t.status === "done" ? 100 : 0),
             // when it was ticked off, as YYYY-MM-DD, so the tracker can tell
             // whether it landed before or after its due date
             doneOn: t.doneAt && t.doneAt.toDate
@@ -220,6 +223,25 @@ if (!CONFIGURED) {
         console.error("Chạm HQ: lost the updates feed", err);
         window.ChamHQ.setUpdates(null);
       });
+
+    // Photos, stored small and inline in Firestore rather than in Storage,
+    // which this project would need a paid plan to switch on.
+    unsubPhotos = onSnapshot(collection(db, "photos"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({
+            id: d.id, date: v.date || null, who: v.who || "team",
+            caption: v.caption || "", data: v.data || "", w: v.w || 0, h: v.h || 0
+          });
+        });
+        window.ChamHQ.setPhotos(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the photos", err);
+        window.ChamHQ.setPhotos(null);
+      });
   });
 
   /* ----- what app.js is allowed to call ---------------------------- */
@@ -227,8 +249,14 @@ if (!CONFIGURED) {
     configured: true,
     async setStatus(id, status) {
       const patch = { status, updatedAt: serverTimestamp() };
-      if (status === "done") patch.doneAt = serverTimestamp();
+      if (status === "done") { patch.doneAt = serverTimestamp(); patch.progress = 100; }
       await updateDoc(doc(db, "tasks", id), patch);
+    },
+    async setProgress(id, progress) {
+      await updateDoc(doc(db, "tasks", id), {
+        progress: Math.max(0, Math.min(100, Math.round(progress))),
+        updatedAt: serverTimestamp()
+      });
     },
     /** admins only - the rules stop anyone else changing these */
     async editTask(id, patch) {
@@ -260,7 +288,17 @@ if (!CONFIGURED) {
         });
       }
     },
-    async deleteUpdate(id) { await deleteDoc(doc(db, "updates", id)); }
+    async deleteUpdate(id) { await deleteDoc(doc(db, "updates", id)); },
+
+    async addPhoto(ph) {
+      await addDoc(collection(db, "photos"), {
+        date: ph.date, who: ph.who, caption: ph.caption || "",
+        data: ph.data, w: ph.w, h: ph.h,
+        createdBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null,
+        createdAt: serverTimestamp()
+      });
+    },
+    async deletePhoto(id) { await deleteDoc(doc(db, "photos", id)); }
   };
 
   showSignedOut();

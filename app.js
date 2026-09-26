@@ -96,6 +96,7 @@
   const BASE_DAYS = DAYS;
   let SESSION = null;
   let LIVE_UPDATES = null;
+  let PHOTOS = null;
 
   /* Live entries sit on top of what data.json already had, rather than
      replacing it, so the chat history from before any of this existed
@@ -127,6 +128,11 @@
       $("status-filters").replaceChildren();
       render();
     },
+    setPhotos(rows) {
+      PHOTOS = Array.isArray(rows) ? rows : null;
+      $("photo-filters").replaceChildren();
+      render();
+    },
     setUpdates(rows) {
       LIVE_UPDATES = Array.isArray(rows) ? rows : null;
       DAYS = mergedDays();
@@ -135,9 +141,13 @@
     },
     setSession(s) {
       SESSION = s;
-      $("task-filters").replaceChildren();
-      $("status-filters").replaceChildren();
-      $("upd-filters").replaceChildren();
+      /* Panels are built once and then left alone, so they have to be torn
+         down when the person changes - otherwise signing in after somebody
+         else leaves you looking at their buttons. */
+      ["task-filters","status-filters","upd-filters","photo-filters",
+       "upd-admin","admin-panel","photo-add"].forEach((id) => {
+        const n = $(id); if (n) n.replaceChildren();
+      });
       render();
     },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
@@ -167,11 +177,12 @@
     status: "live",           // live = everything except done
     updPerson: "all",
     trackSort: "behind",
+    photoPerson: "all",
     month: (() => { const d = fromIso(TODAY); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
     selected: TODAY
   };
 
-  const VIEWS = ["updates","calendar","tasks","tracker"];
+  const VIEWS = ["updates","calendar","tasks","photos","tracker"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -198,6 +209,7 @@
     if (S.view === "updates") { renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
+    if (S.view === "photos") renderPhotos();
     if (S.view === "tracker") renderTracker();
     renderAdmin();
   }
@@ -246,6 +258,7 @@
     $("n-calendar").textContent = calEvents().filter((e) => e.date >= TODAY && e.state !== "past").length + calUndated().length;
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
+    $("n-photos").textContent = PHOTOS ? PHOTOS.length : "";
 
     const cr = fromIso(CHAT_READ);
     $("stamp").textContent = cr ? "Chat read to " + pretty(CHAT_READ) + " " + cr.getFullYear() : "";
@@ -286,7 +299,7 @@
         ]);
         /* only entries that came from the database can be removed here;
            the ones from data.json are edited in the file */
-        if (i.id && SESSION && SESSION.admin && window.ChamLive) {
+        if (i.id && SESSION && window.ChamLive && (SESSION.admin || SESSION.personKey === i.who)) {
           row.appendChild(el("button", {
             class: "bullet-x", type: "button", title: "Remove this line",
             "aria-label": "Remove this line", text: "\u00d7",
@@ -344,7 +357,10 @@
   function renderUpdateAdmin() {
     const box = $("upd-admin");
     if (!box) return;
-    const on = Boolean(SESSION && SESSION.admin && window.ChamLive);
+    /* Everyone signed in can log their own progress. Only admins can put
+       words in somebody else's mouth, or backdate an entry. */
+    const on = Boolean(SESSION && window.ChamLive);
+    const admin = Boolean(SESSION && SESSION.admin);
     box.hidden = !on;
     if (!on) { box.replaceChildren(); return; }
     if (box.childElementCount) return;
@@ -352,8 +368,13 @@
     const today = isoDay(new Date());
 
     /* ---- one line at a time ---- */
-    const date = el("input", { class: "ad-in", type: "date", value: today, "aria-label": "Which day" });
-    const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who" }));
+    const date = el("input", { class: "ad-in", type: "date", value: today,
+                               "aria-label": "Which day", disabled: !admin });
+    const who = admin
+      ? peopleOptions(el("select", { class: "ad-in", "aria-label": "Who" }))
+      : el("span", { class: "ad-fixed" }, [avatar(SESSION.personKey),
+          el("span", { text: PEOPLE[SESSION.personKey] ? PEOPLE[SESSION.personKey].name : "You" })]);
+    who.value = admin ? who.value : SESSION.personKey;
     const text = el("input", { class: "ad-in wide", type: "text", placeholder: "What happened", "aria-label": "What happened" });
     const tag = el("input", { class: "ad-in", type: "text", placeholder: "Day label (optional)", "aria-label": "Day label" });
     const keyBox = el("input", { type: "checkbox", id: "upd-key" });
@@ -366,9 +387,10 @@
         post.disabled = true; post.textContent = "Posting\u2026";
         try {
           await window.ChamLive.addUpdates([{
-            date: date.value || today, who: who.value,
-            text: text.value.trim(), key: keyBox.checked,
-            tag: tag.value.trim() || null
+            date: admin ? (date.value || today) : today,
+            who: admin ? who.value : SESSION.personKey,
+            text: text.value.trim(), key: admin ? keyBox.checked : false,
+            tag: admin ? (tag.value.trim() || null) : null
           }]);
           text.value = ""; keyBox.checked = false;
           msg.textContent = "Posted. It is on everyone\u2019s phone now.";
@@ -436,22 +458,29 @@
     });
 
     box.append(
-      el("h3", { class: "grp", text: "Add to the feed" }),
-      el("div", { class: "adrow" }, [
-        date, who, text,
-        el("label", { class: "ad-check" }, [keyBox, el("span", { text: "highlight" })]),
-        post
-      ]),
-      el("div", { class: "adrow" }, [tag, msg]),
-      el("details", { class: "viz-details" }, [
-        el("summary", { text: "Or paste the whole day out of the chat" }),
-        el("div", { class: "pastebox" }, [
-          paste,
-          el("div", { class: "adrow" }, [sortBtn, postAll, pmsg]),
-          drafts
-        ])
-      ])
+      el("h3", { class: "grp", text: admin ? "Add to the feed" : "Log what you did" }),
+      el("div", { class: "adrow" }, admin
+        ? [date, who, text, el("label", { class: "ad-check" }, [keyBox, el("span", { text: "highlight" })]), post]
+        : [who, text, post])
     );
+    if (admin) {
+      box.append(
+        el("div", { class: "adrow" }, [tag, msg]),
+        el("details", { class: "viz-details" }, [
+          el("summary", { text: "Or paste the whole day out of the chat" }),
+          el("div", { class: "pastebox" }, [
+            paste,
+            el("div", { class: "adrow" }, [sortBtn, postAll, pmsg]),
+            drafts
+          ])
+        ])
+      );
+    } else {
+      box.append(el("div", { class: "adrow" }, [
+        el("span", { class: "ad-msg", text: "Goes on today under your name, so everyone can see what you got done." }),
+        msg
+      ]));
+    }
   }
 
   function renderCalendar() {
@@ -582,11 +611,18 @@
         ]);
         if (t.due) meta.appendChild(el("span", { class: "pill due", text: (late ? "was due " : "due ") + pretty(t.due) }));
         if (!t.due && t.since) meta.appendChild(el("span", { class: "pill due", text: "since " + pretty(t.since) }));
+        const pct = t.status === "done" ? 100 : (t.progress || 0);
         const body = el("div", { class: "body" }, [
           el("div", { class: "tt", text: t.title }),
           t.note ? el("div", { class: "note", text: t.note }) : null,
           meta
         ]);
+        if (pct > 0 && t.status !== "done") {
+          body.appendChild(el("div", { class: "tprog" }, [
+            el("div", { class: "tprog-track" }, [el("i", { style: "width:" + pct + "%" })]),
+            el("span", { class: "tprog-n", text: pct + "%" })
+          ]));
+        }
         if (canEdit(t)) body.appendChild(taskActions(t));
         list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status) }, [body]));
       });
@@ -625,6 +661,27 @@
         class: "act ghost", type: "button", text: "Edit",
         onclick: (e) => openEditor(t, e.currentTarget.closest("article"))
       }));
+    }
+
+    /* How far along, in the owner's own words. Marking it Done sets this
+       to 100 on its own, so nobody has to do both. */
+    if (t.status !== "done") {
+      const now = t.progress || 0;
+      const out = el("span", { class: "sl-n", text: now + "%" });
+      const sl = el("input", {
+        class: "sl", type: "range", min: "0", max: "100", step: "5", value: String(now),
+        "aria-label": "How far along " + t.title + " is"
+      });
+      sl.addEventListener("input", () => { out.textContent = sl.value + "%"; });
+      sl.addEventListener("change", async () => {
+        sl.disabled = true;
+        try { await window.ChamLive.setProgress(t.id, Number(sl.value)); }
+        catch (err) { flash(row, "Did not save. " + (err.code || err.message)); }
+        sl.disabled = false;
+      });
+      row.appendChild(el("span", { class: "slwrap" }, [
+        el("span", { class: "sl-k", text: "how far" }), sl, out
+      ]));
     }
 
     row.appendChild(el("button", {
@@ -771,11 +828,18 @@
       if (n > worst) worst = n;
     });
 
+    /* Average of how far along everything is, a finished job counting as
+       100. Somebody most of the way through four jobs is not on zero, which
+       is what counting only finished ones would claim. */
+    const avg = mine.length
+      ? Math.round(mine.reduce((a, t) => a + (t.status === "done" ? 100 : (t.progress || 0)), 0) / mine.length)
+      : 0;
+
     return {
       key, total: mine.length,
       done: done.length, doing: doing.length, rest: rest.length,
       open: open.length, overdue: overdue.length,
-      daysLate, worst,
+      daysLate, worst, avg,
       pct: mine.length ? Math.round((done.length / mine.length) * 100) : 0
     };
   }
@@ -821,7 +885,7 @@
   function renderTracker() {
     const sbox = $("track-sort");
     if (!sbox.childElementCount) {
-      [["behind","Furthest behind"],["done","Most finished"],["load","Biggest workload"],["name","By name"]].forEach(([k, label]) => {
+      [["behind","Furthest behind"],["done","Most finished"],["far","Furthest along"],["load","Biggest workload"],["name","By name"]].forEach(([k, label]) => {
         sbox.appendChild(el("button", {
           class: "chipbtn plain", "aria-pressed": String(S.trackSort === k), "data-k": k,
           text: label,
@@ -855,6 +919,7 @@
     if (S.trackSort === "done")      rows.sort((a,b) => b.done - a.done || b.pct - a.pct);
     else if (S.trackSort === "name") rows.sort((a,b) => PEOPLE[a.key].name.localeCompare(PEOPLE[b.key].name));
     else if (S.trackSort === "load") rows.sort((a,b) => b.total - a.total || b.open - a.open);
+    else if (S.trackSort === "far") rows.sort((a,b) => b.avg - a.avg || b.done - a.done);
     else rows.sort((a,b) => b.daysLate - a.daysLate || b.overdue - a.overdue || b.open - a.open);
 
     const box = $("tracker");
@@ -879,14 +944,15 @@
           style: "flex:" + n + " 0 0",
           "aria-label": PEOPLE[r.key].name + ": " + n + " " + st.label.toLowerCase()
         });
-        tip(seg, [PEOPLE[r.key].name, n + " " + st.label.toLowerCase() + " of " + r.total]);
+        tip(seg, [PEOPLE[r.key].name, n + " " + st.label.toLowerCase() + " of " + r.total,
+                  r.avg + "% of the way through overall"]);
         track.appendChild(seg);
       });
 
       plot1.appendChild(el("div", { class: "hrow" }, [
         el("span", { class: "hname" }, [avatar(r.key), el("span", { text: PEOPLE[r.key].name })]),
         el("div", { class: "htrack" }, [track]),
-        el("span", { class: "hval", text: r.done + "/" + r.total })
+        el("span", { class: "hval", text: r.avg + "%", title: r.done + " of " + r.total + " finished" })
       ]));
     });
     c1.appendChild(plot1);
@@ -978,13 +1044,13 @@
 
     /* ----- the same numbers plainly, for anyone who would rather read them ----- */
     const tbl = el("table", { class: "viz-table" });
-    tbl.appendChild(el("thead", {}, [el("tr", {}, ["Person","Jobs","Finished","In progress","Not started","Overdue","Days late"]
+    tbl.appendChild(el("thead", {}, [el("tr", {}, ["Person","Jobs","Finished","In progress","Not started","How far","Overdue","Days late"]
       .map((h) => el("th", { text: h, scope: "col" })))]));
     const tb = el("tbody");
     rows.forEach((r) => {
       tb.appendChild(el("tr", {}, [
         el("th", { scope: "row", text: PEOPLE[r.key].name })
-      ].concat([r.total, r.done, r.doing, r.rest, r.overdue, r.daysLate].map((v) => el("td", { text: String(v) })))));
+      ].concat([r.total, r.done, r.doing, r.rest, r.avg + "%", r.overdue, r.daysLate].map((v) => el("td", { text: String(v) })))));
     });
     tbl.appendChild(tb);
     box.appendChild(el("details", { class: "viz-details" }, [
@@ -992,6 +1058,174 @@
     ]));
 
     if (!rows.length) box.replaceChildren(el("div", { class: "empty-state", text: "No jobs to count yet." }));
+  }
+
+  /* ------------------------------------------------------------------ *
+   * photos
+   *
+   * Firebase Storage needs a paid plan on this project, so pictures are
+   * shrunk in the browser and kept inline in the database instead. That
+   * keeps them behind the login, which matters: these are photographs of
+   * students and the rest of this site is public.
+   * ------------------------------------------------------------------ */
+  const PHOTO_MAX = 1280;      // longest edge, in pixels
+  const PHOTO_BUDGET = 700000; // bytes of encoded text, under the 1MB field limit
+
+  function shrink(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, PHOTO_MAX / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        /* step the quality down until it fits, rather than refusing a big photo */
+        let q = 0.78, out = c.toDataURL("image/jpeg", q);
+        while (out.length > PHOTO_BUDGET && q > 0.35) {
+          q -= 0.12;
+          out = c.toDataURL("image/jpeg", q);
+        }
+        if (out.length > PHOTO_BUDGET) return reject(new Error("still too big after shrinking"));
+        resolve({ data: out, w, h });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("not an image we can read")); };
+      img.src = url;
+    });
+  }
+
+  function renderPhotoAdd() {
+    const box = $("photo-add");
+    if (!box) return;
+    const on = Boolean(SESSION && window.ChamLive);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (box.childElementCount) return;
+
+    const file = el("input", { class: "ad-in", type: "file", accept: "image/*", multiple: true, "aria-label": "Pick photos" });
+    const cap = el("input", { class: "ad-in wide", type: "text", placeholder: "What is it? (optional)", "aria-label": "Caption" });
+    const msg = el("span", { class: "ad-msg" });
+
+    const go = el("button", { class: "au-go", type: "button", text: "Add them",
+      onclick: async () => {
+        const files = [...(file.files || [])];
+        if (!files.length) { msg.textContent = "Pick a photo first."; msg.classList.add("bad"); return; }
+        msg.classList.remove("bad");
+        go.disabled = true;
+        let done = 0, failed = 0;
+        for (const f of files) {
+          go.textContent = "Adding " + (done + failed + 1) + " of " + files.length + "\u2026";
+          try {
+            const shrunk = await shrink(f);
+            await window.ChamLive.addPhoto({
+              date: isoDay(new Date()), who: SESSION.personKey,
+              caption: cap.value.trim(), data: shrunk.data, w: shrunk.w, h: shrunk.h
+            });
+            done++;
+          } catch (err) {
+            failed++;
+            console.error("photo failed", f.name, err);
+          }
+        }
+        file.value = ""; cap.value = "";
+        go.disabled = false; go.textContent = "Add them";
+        msg.textContent = done + " added" + (failed ? ", " + failed + " would not go" : "") + ".";
+        if (failed) msg.classList.add("bad");
+      }
+    });
+
+    box.append(
+      el("h3", { class: "grp", text: "Add photos" }),
+      el("div", { class: "adrow" }, [file, cap, go]),
+      el("div", { class: "adrow" }, [msg])
+    );
+  }
+
+  function openLightbox(ph) {
+    const lb = $("lightbox");
+    $("lb-img").src = ph.data;
+    $("lb-cap").textContent = (PEOPLE[ph.who] ? PEOPLE[ph.who].name : ph.who)
+      + (ph.date ? " \u00b7 " + pretty(ph.date) : "") + (ph.caption ? " \u00b7 " + ph.caption : "");
+    const dl = $("lb-dl");
+    dl.href = ph.data;
+    dl.download = "cham-" + (ph.date || "photo") + ".jpg";
+    lb.hidden = false;
+    $("lb-close").focus();
+  }
+  (function lightboxWiring() {
+    const lb = $("lightbox");
+    if (!lb) return;
+    const close = () => { lb.hidden = true; $("lb-img").src = ""; };
+    $("lb-close").addEventListener("click", close);
+    lb.addEventListener("click", (e) => { if (e.target === lb) close(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !lb.hidden) close(); });
+  })();
+
+  function renderPhotos() {
+    renderPhotoAdd();
+
+    const grid = $("photo-grid");
+    grid.replaceChildren();
+
+    if (!SESSION) {
+      grid.appendChild(el("div", { class: "empty-state", text: "Sign in to see the photos. They are kept off the public page on purpose." }));
+      $("photo-filters").replaceChildren();
+      return;
+    }
+    if (!PHOTOS || !PHOTOS.length) {
+      grid.appendChild(el("div", { class: "empty-state", text: "No photos yet. Add the first one." }));
+      return;
+    }
+
+    const fbox = $("photo-filters");
+    if (!fbox.childElementCount) {
+      ["all"].concat([...new Set(PHOTOS.map((p) => p.who))]).forEach((k) => {
+        fbox.appendChild(el("button", {
+          class: "chipbtn" + (k === "all" ? " plain" : ""),
+          "aria-pressed": String(S.photoPerson === k), "data-k": k,
+          onclick: () => { S.photoPerson = k; syncPressed(fbox, k); renderPhotos(); }
+        }, k === "all" ? [document.createTextNode("Everyone")]
+                       : [avatar(k), el("span", { text: PEOPLE[k] ? PEOPLE[k].name : k })]));
+      });
+    }
+
+    const rows = PHOTOS
+      .filter((p) => S.photoPerson === "all" || p.who === S.photoPerson)
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    if (!rows.length) {
+      grid.appendChild(el("div", { class: "empty-state", text: "Nothing from them yet." }));
+      return;
+    }
+
+    const wall = el("div", { class: "pgrid" });
+    rows.forEach((ph) => {
+      const tile = el("button", { class: "ptile", type: "button",
+        "aria-label": "Open photo from " + (PEOPLE[ph.who] ? PEOPLE[ph.who].name : ph.who),
+        onclick: () => openLightbox(ph) },
+        [el("img", { src: ph.data, alt: ph.caption || "", loading: "lazy" })]);
+
+      const foot = el("div", { class: "pfoot" }, [
+        avatar(ph.who),
+        el("span", { class: "pcap", text: ph.caption || (ph.date ? pretty(ph.date) : "") })
+      ]);
+
+      if (SESSION.admin || SESSION.personKey === ph.who) {
+        foot.appendChild(el("button", {
+          class: "act ghost danger", type: "button", text: "remove",
+          onclick: async () => {
+            if (!window.confirm("Remove this photo?")) return;
+            try { await window.ChamLive.deletePhoto(ph.id); }
+            catch (err) { window.alert("Could not remove it. " + (err.code || err.message)); }
+          }
+        }));
+      }
+      wall.appendChild(el("figure", { class: "pcard" }, [tile, foot]));
+    });
+    grid.appendChild(wall);
   }
 
   /* ----- footer ----- */

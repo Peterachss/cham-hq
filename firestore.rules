@@ -28,10 +28,27 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // The day-by-day feed. Everyone reads it; only Peter and Bach write it.
+    // The day-by-day feed. Everyone reads it. Members may post their own
+    // progress under their own name; admins may post as anyone and tidy up.
     match /updates/{updateId} {
-      allow read:  if isMember();
-      allow write: if isAdmin();
+      allow read:   if isMember();
+      allow create: if isAdmin()
+                    || (isMember() && request.resource.data.who == me().personKey);
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+                    || (isMember() && resource.data.who == me().personKey);
+    }
+
+    // Photos for CAS evidence. Stored small and inline, readable only by
+    // members - these are pictures of students and must not be public.
+    match /photos/{photoId} {
+      allow read:   if isMember();
+      allow create: if isMember()
+                    && request.resource.data.who == me().personKey
+                    && request.resource.data.data.size() < 1000000;
+      allow update: if false;
+      allow delete: if isAdmin()
+                    || (isMember() && resource.data.who == me().personKey);
     }
 
     match /tasks/{taskId} {
@@ -46,7 +63,7 @@ service cloud.firestore {
              && request.resource.data.who == resource.data.who
              // you may only move these fields, nothing else
              && request.resource.data.diff(resource.data)
-                  .affectedKeys().hasOnly(['status', 'note', 'doneAt', 'updatedAt'])
+                  .affectedKeys().hasOnly(['status', 'note', 'progress', 'doneAt', 'updatedAt'])
              && request.resource.data.status in ['open', 'doing', 'blocked', 'done']
            );
     }
