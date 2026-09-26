@@ -2419,6 +2419,15 @@
     const wrap = $("mascot");
     if (!wrap) return;
     wrap.hidden = false;
+    /* stand just under the header, however tall it is on this screen */
+    const top = document.querySelector("header.top");
+    if (top && !renderMascot.watching) {
+      renderMascot.watching = true;
+      const fit = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
+      fit();
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(top);
+      else window.addEventListener("resize", fit);
+    }
     /* speak up once per visit, a moment after the page settles, then go quiet */
     if (!mascotAutoDone && sessionKnown) {
       mascotAutoDone = true;

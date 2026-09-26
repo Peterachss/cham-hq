@@ -992,10 +992,18 @@
   .officer-n.sm { font-size: 15px; font-family: var(--sans); }
   .officer-s { font-size: 12.5px; color: var(--ink-2); }
 
-  /* Wide screens have an empty gutter right of the page - Judy stands there,
-     under the "chat read to" date, and her bubble drops down below her. */
+  /* Judy stands in the top-right corner, just under the sticky header
+     (its height is measured into --top-h), and her bubble drops down
+     below her. On wide screens she stands in the empty gutter. */
+  .mascot { left: auto; bottom: auto; right: 10px; top: calc(var(--top-h, 110px) + 8px); }
+  .mascot-bubble { bottom: auto; top: calc(100% + 12px); left: auto; right: -2px; }
+  .mascot-bubble::after { bottom: auto; top: -9px; left: auto; right: 34px; transform: rotate(225deg); }
+  @media (max-width: 620px) {
+    .mascot { right: 6px; left: auto; }
+    .mascot-btn { width: 56px; height: 112px; }
+    .mascot-bubble { bottom: auto; right: -2px; }
+    .mascot-bubble::after { right: 20px; }
+  }
   @media (min-width: 1300px) {
-    .mascot { left: auto; bottom: auto; top: 128px; right: max(12px, calc((100vw - 1060px) / 4 - 46px)); }
-    .mascot-bubble { bottom: auto; top: calc(100% + 12px); left: auto; right: -6px; }
-    .mascot-bubble::after { bottom: auto; top: -9px; left: auto; right: 38px; transform: rotate(225deg); }
+    .mascot { right: max(12px, calc((100vw - 1060px) / 4 - 46px)); }
   }
