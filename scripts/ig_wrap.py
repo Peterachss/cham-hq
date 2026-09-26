@@ -60,7 +60,7 @@ def load_config():
     # mark at the front and json.load refuses to parse one
     with open(CONFIG, encoding="utf-8-sig") as f:
         cfg = json.load(f)
-    for k in ("thread_url", "anthropic_api_key", "firebase_key_path"):
+    for k in ("thread_url", "firebase_key_path"):
         if not cfg.get(k):
             sys.exit(f"{CONFIG} is missing {k}")
     if not os.path.exists(cfg["firebase_key_path"]):
@@ -191,7 +191,125 @@ CHAT:
 """
 
 
+# --------------------------------------------------------------------------
+# summarising without a model
+#
+# The same rules the site's paste box uses, so a line judged "chatter" here
+# is judged the same way there. Instagram puts a sender's name on its own
+# line and their messages under it; this follows who is talking, drops the
+# interface furniture, and marks filler so it starts un-ticked in review.
+# --------------------------------------------------------------------------
+LETTERS = "a-z\u00c0-\u1ef9"
+
+NOISE = [re.compile(x, re.I) for x in [
+    r"^\d{1,2}:\d{2}(\s*[ap]m)?$", r"^(today|yesterday|now|just now)$",
+    r"^(mon|tue|wed|thu|fri|sat|sun)[a-z]*$", r"^(seen|delivered|sent|you sent|active now)\b",
+    r"^\d+\s+active( today)?$", r"^(liked|loved|reacted|replied)\b",
+    r"replied to (you|themselves|a message)", r"^(enter|message|send|aa)$",
+    r"^user[\s-]?avatar$", r"^user[\s-]?profile[\s-]?picture$", r"^(profile )?photo$",
+    r"^this (photo|video) can only be", r"^use the mobile app", r"^(you )?(sent|forwarded) (a|an) ",
+    r"^\d+ (new )?messages?$", r"^(reply|forward|copy|unsend|remove)$", r"^open photo",
+]]
+KEEP_SIGNAL = re.compile("|".join([
+    r"\d",
+    r"\b(today|tomorrow|tonight|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|deadline|due|by then)\b",
+    r"\b(k|tr|vnd|dong|price|cost|budget|paid|pay|spent|bought|sell|sold|profit|money|fund)\b",
+    r"\b(approved|approve|decided|decide|confirmed|confirm|agreed|cancel|cancelled|postpone|moved|booked)\b",
+    r"\b(need|needs|will|going to|gonna|must|should|plan|planned|assigned|finished|done|sent|submitted|started)\b",
+    r"\b(meeting|sale|event|proposal|design|merch|poster|order|form|sheet|deck|slides)\b",
+]), re.I)
+FILLER = re.compile(r"^(ok(ay)?|k+|yes+|yeah+|ya|yep|yup|no+|nope|lol+|lmao+|ha(ha)+|h+a+|hha+|he(he)+|omg|same|true|fr|bruh+|nice|cool|thanks?|thank you|ty|sure|wait|what|huh|oh+|ah+|hmm+|damn|bro|guys|oh yeah( guys)?|good job|gj|gl|w|l)[.!?\s]*$", re.I)
+
+
+def is_noise(t):
+    t = t.strip()
+    if len(t) < 2 or not re.search(r"[a-z\u00c0-\u1ef9\d]", t, re.I):
+        return True
+    return any(r.search(t) for r in NOISE)
+
+
+def is_chatter(t):
+    t = t.strip()
+    if not t or FILLER.match(t) or re.match(r"^@[\w.]+\s*$", t):
+        return True
+    if KEEP_SIGNAL.search(t):
+        return False
+    return len(t) < 28
+
+
+def who_is_this(raw, people):
+    line = re.sub(r"[:\u2013-]\s*$", "", raw.strip()).lower()
+    if not line or len(line) > 32:
+        return None
+    words = line.split()
+    if len(words) > 4:
+        return None
+    for key, name in people.items():
+        name = name.lower()
+        if line in (key, name):
+            return key
+        for w in words:
+            bare = re.sub(f"[^{LETTERS}]", "", w)
+            if bare in (key, name):
+                return key
+    return None
+
+
+def people_names(cfg):
+    """personKey -> display name, from data.json, so matching tracks the site."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(here, "data.json"), encoding="utf-8") as f:
+            ppl = json.load(f)["PEOPLE"]
+        return {k: v.get("name", k) for k, v in ppl.items()
+                if k != "team" and not str(v.get("role", "")).startswith("Left ")}
+    except Exception:
+        return {k: k.title() for k in PEOPLE_KEYS if k != "team"}
+
+
+def summarise_plain(cfg, rows):
+    people = people_names(cfg)
+    out, current = [], "team"
+    for block in rows:
+        for raw in str(block).splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            m = re.match(rf"^\s*([{LETTERS} ._]{{1,24}}?)\s*[:\u2013-]\s+(.*)$", line, re.I)
+            if m:
+                k = who_is_this(m.group(1), people)
+                if k:
+                    out.append({"who": k, "text": m.group(2).strip()})
+                    current = k
+                    continue
+            head = who_is_this(line, people)
+            if head:
+                current = head
+                continue
+            if is_noise(line):
+                continue
+            out.append({"who": current, "text": line})
+    # the same message scraped twice (Instagram repeats rows as it scrolls)
+    seen, uniq = set(), []
+    for o in out:
+        sig = (o["who"], o["text"])
+        if sig not in seen:
+            seen.add(sig)
+            o["keep"] = not is_chatter(o["text"])
+            o["key"] = False
+            uniq.append(o)
+    log(f"summarise (no model): {len(uniq)} lines, {sum(o['keep'] for o in uniq)} worth keeping")
+    return uniq
+
+
+def has_real_key(cfg):
+    k = (cfg.get("anthropic_api_key") or "").strip()
+    return k.startswith("sk-ant-") and "PUT" not in k
+
+
 def summarise(cfg, rows):
+    if not has_real_key(cfg):
+        return summarise_plain(cfg, rows)
     import anthropic
 
     chat = "\n".join(rows)[: int(cfg.get("max_chars", 60000))]
@@ -219,7 +337,8 @@ def summarise(cfg, rows):
         body = m.group(2).strip()
         if len(body) < 4:
             continue
-        out.append({"who": m.group(1), "text": body, "key": "**" in body})
+        out.append({"who": m.group(1), "text": body, "key": "**" in body, "keep": True})
+    log(f"summarise (model): {len(out)} lines")
     return out
 
 
@@ -238,36 +357,28 @@ def firestore(cfg):
     )
 
 
-def publish(cfg, lines, today):
+def publish(cfg, lines, today, method):
+    """Tonight's wrap goes into a review queue, not onto the page. A group
+    chat has things in it that should not sit under people's names on a
+    page, and a filter is only a guess - so Peter or Bach gets a push, looks,
+    and posts it with one tap."""
     from google.cloud import firestore as fs
 
     db = firestore(cfg)
-
-    # never post twice for the same day
-    already = list(
-        db.collection("updates").where("date", "==", today).where("createdBy", "==", "auto").limit(1).stream()
-    )
-    if already:
-        log("publish: today already has an automatic wrap, leaving it alone")
+    ref = db.collection("chatDrafts").document(today)
+    old = ref.get()
+    if old.exists and (old.to_dict() or {}).get("status") == "posted":
+        log("publish: tonight's wrap was already reviewed and posted, leaving it")
         return 0
-
-    batch = db.batch()
-    for ln in lines:
-        ref = db.collection("updates").document()
-        batch.set(
-            ref,
-            {
-                "date": today,
-                "who": ln["who"],
-                "text": ln["text"],
-                "key": ln["key"],
-                "tag": cfg.get("tag", "Nightly wrap"),
-                "createdBy": "auto",
-                "createdAt": fs.SERVER_TIMESTAMP,
-            },
-        )
-    batch.commit()
-    log(f"publish: wrote {len(lines)} lines for {today}")
+    ref.set({
+        "date": today,
+        "lines": [{"who": l["who"], "text": l["text"], "keep": bool(l.get("keep", True)),
+                   "key": bool(l.get("key"))} for l in lines],
+        "method": method,
+        "status": "pending",
+        "createdAt": fs.SERVER_TIMESTAMP,
+    })
+    log(f"publish: {len(lines)} lines queued for review ({method})")
     return len(lines)
 
 
@@ -285,7 +396,7 @@ def main():
         do_login(cfg)
         return
 
-    today = dt.date.today().isoformat()
+    today = dt.datetime.now(dt.timezone(dt.timedelta(hours=7))).date().isoformat()
     log(f"=== wrap for {today} ===")
 
     rows = scrape(cfg, headless=not args.headed and not cfg.get("headed", False))
@@ -305,7 +416,7 @@ def main():
         log("dry run, nothing written")
         return
 
-    publish(cfg, lines, today)
+    publish(cfg, lines, today, "model" if has_real_key(cfg) else "rules")
     log("done")
 
 

@@ -59,3 +59,10 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python scripts/notify.py ${{ steps.mode.outputs.digest }} ${{ steps.mode.outputs.dry }}
+
+      # Money lines into Thuan's sheet. Waits, saying why, until the Sheets
+      # API is on and the sheet is shared with the service account.
+      - name: Finance sheet
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: python scripts/sync_finance.py ${{ steps.mode.outputs.dry }}

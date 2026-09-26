@@ -33,7 +33,7 @@ if (!CONFIGURED) {
   } = auth_;
   const {
     getFirestore, collection, doc, getDoc, onSnapshot,
-    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp
+    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where
   } = store_;
 
   /* a subscription's document id is a hash of its endpoint, so the same
@@ -67,7 +67,7 @@ if (!CONFIGURED) {
     return n;
   };
 
-  let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null;
+  let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -139,6 +139,7 @@ if (!CONFIGURED) {
     if (unsubUpdates) { unsubUpdates(); unsubUpdates = null; }
     if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
     if (unsubMoney) { unsubMoney(); unsubMoney = null; }
+    if (unsubDrafts) { unsubDrafts(); unsubDrafts = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
@@ -146,6 +147,7 @@ if (!CONFIGURED) {
       window.ChamHQ.setUpdates(null);
       window.ChamHQ.setPhotos(null);
       window.ChamHQ.setMoney(null);
+      window.ChamHQ.setDrafts(null);
       showSignedOut();
       return;
     }
@@ -289,6 +291,17 @@ if (!CONFIGURED) {
         console.error("Chạm HQ: lost the money log", err);
         window.ChamHQ.setMoney(null);
       });
+
+    // tonight's chat wrap, for the two people who approve it
+    if (session.admin) {
+      unsubDrafts = onSnapshot(query(collection(db, "chatDrafts"), where("status", "==", "pending")),
+        (qs) => {
+          const rows = [];
+          qs.forEach((d) => { const v = d.data(); rows.push({ id: d.id, date: v.date || d.id, method: v.method || "", lines: v.lines || [] }); });
+          window.ChamHQ.setDrafts(rows);
+        },
+        (err) => { console.error("Chạm HQ: lost the chat drafts", err); window.ChamHQ.setDrafts(null); });
+    }
   });
 
   /* ----- what app.js is allowed to call ---------------------------- */
@@ -385,6 +398,10 @@ if (!CONFIGURED) {
         device: device || "",
         createdAt: serverTimestamp()
       });
+    },
+    async setDraftStatus(id, status) {
+      await updateDoc(doc(db, "chatDrafts", id), { status, reviewedAt: serverTimestamp(),
+        reviewedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
     },
     async deletePushSub(endpoint) {
       await deleteDoc(doc(db, "pushSubs", await subId(endpoint)));

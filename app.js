@@ -98,6 +98,7 @@
   let LIVE_UPDATES = null;
   let PHOTOS = null;
   let LEDGER = null;
+  let DRAFTS = null;
 
   /* Live entries sit on top of what data.json already had, rather than
      replacing it, so the chat history from before any of this existed
@@ -129,6 +130,10 @@
       $("task-filters").replaceChildren();
       $("status-filters").replaceChildren();
       render();
+    },
+    setDrafts(rows) {
+      DRAFTS = Array.isArray(rows) ? rows : null;
+      if (S.view === "updates") renderDrafts();
     },
     setMoney(rows) {
       LEDGER = Array.isArray(rows) ? rows : null;
@@ -408,7 +413,7 @@
   function render() {
     renderGlance();
     renderNotify();
-    if (S.view === "updates") { renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "updates") { renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
     if (S.view === "money") renderMoney();
@@ -682,6 +687,76 @@
       out.push({ who: current, text: line });
     });
     return out;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * tonight's chat wrap, waiting for a look
+   *
+   * The nightly job reads the chat and sorts it, but it never posts on its
+   * own: a filter is a guess, and a group chat has things in it that should
+   * not sit under people's names. It lands here instead, with chatter
+   * already un-ticked, and one tap posts the rest.
+   * ------------------------------------------------------------------ */
+  function renderDrafts() {
+    const box = $("chat-drafts");
+    if (!box) return;
+    box.replaceChildren();
+    if (!SESSION || !SESSION.admin || !DRAFTS || !DRAFTS.length || !window.ChamLive) return;
+
+    DRAFTS.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach((d) => {
+      const rows = el("div", { class: "drafts" });
+      d.lines.forEach((ln) => {
+        const keep = el("input", { type: "checkbox", "aria-label": "Post this line" });
+        keep.checked = ln.keep !== false;
+        const w = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who said it" }));
+        w.value = ln.who || "team";
+        const t = el("input", { class: "ad-in wide", type: "text", value: ln.text || "", "aria-label": "What was said" });
+        const row = el("div", { class: "draft" + (keep.checked ? "" : " chatter") }, [
+          el("label", { class: "ad-check keep" }, [keep]), w, t
+        ]);
+        keep.addEventListener("change", () => { row.classList.toggle("chatter", !keep.checked); count(); });
+        row._read = () => ({ who: w.value, text: t.value.trim(), keep: keep.checked, key: Boolean(ln.key) });
+        rows.appendChild(row);
+      });
+
+      const msg = el("span", { class: "ad-msg" });
+      const post = el("button", { class: "au-go", type: "button" });
+      const count = () => {
+        const n = [...rows.children].filter((r) => r._read().keep && r._read().text).length;
+        post.textContent = n ? "Post " + n + " line" + (n === 1 ? "" : "s") : "Nothing ticked";
+        post.disabled = !n;
+      };
+      count();
+
+      post.addEventListener("click", async () => {
+        const keep = [...rows.children].map((r) => r._read()).filter((r) => r.keep && r.text);
+        post.disabled = true; post.textContent = "Posting\u2026";
+        try {
+          await window.ChamLive.addUpdates(keep.map((r) => ({ date: d.date, who: r.who, text: r.text, key: r.key, tag: "From the chat" })));
+          await window.ChamLive.setDraftStatus(d.id, "posted");
+        } catch (err) {
+          msg.textContent = "Did not post. " + (err.code || err.message);
+          msg.classList.add("bad");
+          count();
+        }
+      });
+      const drop = el("button", { class: "act ghost", type: "button", text: "Discard it",
+        onclick: async () => {
+          if (!window.confirm("Throw away the chat wrap for " + pretty(d.date) + "?")) return;
+          try { await window.ChamLive.setDraftStatus(d.id, "discarded"); }
+          catch (err) { msg.textContent = "Did not save. " + (err.code || err.message); msg.classList.add("bad"); }
+        } });
+
+      const kept = d.lines.filter((l) => l.keep !== false).length;
+      box.appendChild(el("section", { class: "admin chatwrap" }, [
+        el("div", { class: "cw-head" }, [
+          el("h3", { class: "grp", text: "Chat wrap for " + pretty(d.date) }),
+          el("span", { class: "cw-sub", text: d.lines.length + " lines read, " + kept + " look worth keeping. Nothing is posted until you say." })
+        ]),
+        rows,
+        el("div", { class: "adrow" }, [post, drop, msg])
+      ]));
+    });
   }
 
   function renderUpdateAdmin() {

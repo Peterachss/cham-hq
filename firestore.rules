@@ -86,6 +86,13 @@ service cloud.firestore {
       allow read:   if false;
     }
 
+    // Tonight's chat wrap, waiting for Peter or Bach to look before it
+    // goes anywhere. Written only by the nightly job (service account).
+    match /chatDrafts/{day} {
+      allow read, update, delete: if isAdmin();
+      allow create:               if false;
+    }
+
     match /tasks/{taskId} {
       allow read:            if isMember();
       allow create, delete:  if isAdmin();

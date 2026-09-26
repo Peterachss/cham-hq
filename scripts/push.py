@@ -198,6 +198,24 @@ def stuck(db, P, by_key, subs):
             d.reference.update({"pushedStuck": True})
 
 
+def drafts(db, P, by_key, subs):
+    """Tonight's chat wrap is sitting in review: tell whoever approves it."""
+    admins = [m for m in by_key.values() if m["admin"]]
+    for d in db.collection("chatDrafts").where(filter=FieldFilter("status", "==", "pending")).stream():
+        v = d.to_dict() or {}
+        if v.get("pushed"):
+            continue
+        lines = v.get("lines") or []
+        kept = sum(1 for l in lines if l.get("keep", True))
+        body = f"{kept} line{'s' if kept != 1 else ''} worth keeping from {len(lines)} read. Tap to look before it goes up."
+        log(f"  chat wrap ready -> admins: {body}")
+        for a in admins:
+            if a["key"] in subs:
+                P.send(subs[a["key"]], "Tonight’s chat wrap is ready", body, url="./#updates", tag="chatwrap-" + d.id)
+        if not P.dry:
+            d.reference.update({"pushed": True})
+
+
 def finance(db, P, by_key, subs, meta):
     pending = [d.to_dict() for d in db.collection("expenses").where(filter=FieldFilter("status", "==", "new")).stream()]
     n = len(pending)
@@ -368,6 +386,7 @@ def main():
     assignments(db, P, by_key, subs)
     stuck(db, P, by_key, subs)
     finance(db, P, by_key, subs, meta)
+    drafts(db, P, by_key, subs)
     if now.hour in MORNING:
         morning(db, P, by_key, subs, meta, today)
     if now.hour in EVENING:

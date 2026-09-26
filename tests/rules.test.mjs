@@ -35,6 +35,7 @@ async function seed() {
     await setDoc(doc(db, "photos", "p-emily"), { who: "emily", data: "x", date: "2026-09-26" });
     await setDoc(doc(db, "updates", "u-emily"), { who: "emily", text: "hi", date: "2026-09-26" });
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
+    await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
   });
 }
 
@@ -106,6 +107,14 @@ const cases = [
   ["member removes own subscription",        true,  () => deleteDoc(doc(as(EMILY), "pushSubs/s-emily"))],
   ["cannot remove someone else's",           false, () => deleteDoc(doc(as(BACH), "pushSubs/s-emily"))],
   ["stranger cannot save a subscription",    false, () => setDoc(doc(as(STRANGER), "pushSubs/s4"), { email: STRANGER, endpoint: "https://fcm.googleapis.com/x", keys: {} })],
+
+  // ---------------------------------------------------------------- chat drafts
+  ["admin reads tonight's draft",            true,  () => getDoc(doc(as(BACH), "chatDrafts/2026-09-26"))],
+  ["member cannot read the draft",           false, () => getDoc(doc(as(EMILY), "chatDrafts/2026-09-26"))],
+  ["finance cannot read the draft",          false, () => getDoc(doc(as(THUAN), "chatDrafts/2026-09-26"))],
+  ["admin marks the draft posted",           true,  () => updateDoc(doc(as(PETER), "chatDrafts/2026-09-26"), { status: "posted" })],
+  ["member cannot touch the draft",          false, () => updateDoc(doc(as(EMILY), "chatDrafts/2026-09-26"), { status: "posted" })],
+  ["nobody on the site creates a draft",     false, () => setDoc(doc(as(PETER), "chatDrafts/2026-09-27"), { status: "pending" })],
 ];
 
 let failed = 0;

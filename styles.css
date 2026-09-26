@@ -772,3 +772,10 @@
   .draft .keep { flex: 0 0 auto; }
   .draft.chatter select, .draft.chatter input[type="text"] { opacity: .45; }
   .draft.chatter { text-decoration: none; }
+
+  /* tonight's chat wrap, waiting for a look */
+  .chatwrap { border-color: var(--jade); margin-bottom: 14px; }
+  .cw-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .cw-head .grp { margin: 0; }
+  .cw-sub { font-size: 12.5px; color: var(--muted); }
+  .chatwrap .drafts { margin-bottom: 10px; }
