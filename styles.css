@@ -65,8 +65,7 @@
   /* header */
   .top {
     position: sticky; top: 0; z-index: 30;
-    background: color-mix(in srgb, var(--paper) 90%, transparent);
-    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft);
+    background: var(--paper); border-bottom: 1px solid var(--line-soft);
   }
   .top-in { max-width: 1060px; margin: 0 auto; padding: 13px 18px 0; display: flex; flex-direction: column; gap: 11px; }
   .brandrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -842,20 +841,44 @@
   /* ------------------------------------------------------------------ *
    * logging money from anywhere
    * ------------------------------------------------------------------ */
+  /* + Log money, with Judy in a round badge on its left end - her head and
+     badge-hand pop up out of the circle, over the top of the button. The
+     picture is cut to the circle below her chest and left whole above it. */
   .fab {
     position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 45;
-    appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 600;
-    display: inline-flex; align-items: center; gap: 7px;
-    background: var(--jade); color: var(--on-accent);
-    padding: 12px 19px; border-radius: 999px;
-    box-shadow: 0 8px 22px -8px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .18);
+    appearance: none; border: 0; cursor: pointer; font: inherit;
+    display: inline-flex; align-items: center; height: 54px;
+    padding: 0 22px 0 72px; border-radius: 999px;
+    color: var(--on-accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--jade) 82%, #fff) 0%, var(--jade) 55%);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 10px 24px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .2);
+    transition: transform .16s ease, box-shadow .16s ease;
+    -webkit-tap-highlight-color: transparent;
+    animation: fab-in .38s cubic-bezier(.2, .9, .3, 1.25) backwards;
   }
-  .fab span { font-size: 19px; line-height: 1; margin-top: -1px; }
-  .fab:hover { filter: brightness(1.08); }
+  .fab-label { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; letter-spacing: .005em; }
+  .fab-plus { font-size: 20px; line-height: 1; margin-top: -2px; font-weight: 600; }
+  .fab-judy { position: absolute; left: 5px; bottom: 4px; width: 66px; height: 82px; pointer-events: none; }
+  .fab-judy::before {                      /* the badge she stands in */
+    content: ""; position: absolute; left: 13px; bottom: 0; width: 46px; height: 46px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 30%, #1d8a73 0%, #0b4a3e 78%);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, .5), 0 2px 5px rgba(0, 0, 0, .3) inset;
+  }
+  .fab-judy img {
+    position: relative; display: block; width: 66px; height: 82px;
+    clip-path: path("M0 0 H66 V59 H59 A23 23 0 0 1 13 59 H0 Z");
+    transform-origin: 50% 100%;
+    transition: transform .22s cubic-bezier(.2, .9, .3, 1.3);
+  }
+  .fab:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, .3) inset, 0 14px 28px -10px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .2); transform: translateY(-1px); }
+  .fab:hover .fab-judy img { transform: translateY(-3px) rotate(-4deg); }
+  .fab:active { transform: scale(.97); }
   .fab:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  @keyframes fab-in { from { opacity: 0; transform: translateY(14px) scale(.94); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .fab, .fab-judy img { animation: none; transition: none; } }
   body.has-install .fab { bottom: calc(92px + env(safe-area-inset-bottom)); }
   /* so the last thing on a page is never hidden under the button */
-  body.has-fab .wrap { padding-bottom: 86px; }
+  body.has-fab .wrap { padding-bottom: 116px; }
 
   .sheet {
     border: 0; padding: 0; background: transparent; color: inherit;
@@ -896,77 +919,6 @@
     .sheet { margin: auto 0 0; width: 100%; max-height: 92vh; }
     .sheet .mform { border-radius: 16px 16px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); max-height: 92vh; }
     .fab { right: 14px; }
-  }
-
-  /* ------------------------------------------------------------------ *
-   * Judy - the mascot in the corner
-   * ------------------------------------------------------------------ */
-  .mascot {
-    position: fixed; left: 14px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 44;
-    --bn-line: #2c3a38; --bn-fur: #dcd8e6; --bn-belly: #f1eff6; --bn-inner: #f2a9b3;
-    --bn-edge: #5b4a8a;
-  }
-  @media (prefers-color-scheme: dark) { .mascot { --bn-edge: #b3a3e6; } }
-  .mascot-btn {
-    appearance: none; border: 0; background: none; padding: 0; cursor: pointer; display: block;
-    width: 92px; height: 184px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .28));
-  }
-  .mascot-btn:focus-visible { outline: 3px solid var(--jade); outline-offset: 2px; border-radius: 14px; }
-  .mascot-btn img {
-    display: block; width: 100%; height: 100%; object-fit: contain;
-    transform-origin: 50% 100%; animation: bn-bob 3.4s ease-in-out infinite;
-  }
-  .mascot.talking .mascot-btn img { animation: bn-bob 3.4s ease-in-out infinite, bn-tilt .9s ease-in-out 1; }
-  .mascot-btn img.hop { animation: bn-hop .45s ease-out, bn-bob 3.4s ease-in-out .45s infinite; }
-
-  @keyframes bn-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-  @keyframes bn-tilt { 0%, 100% { rotate: 0deg; } 30% { rotate: -6deg; } 65% { rotate: 4deg; } }
-  @keyframes bn-hop { 0% { transform: translateY(0); } 40% { transform: translateY(-12px); } 100% { transform: translateY(0); } }
-
-  /* the speech bubble: a hard offset shadow and a tail, like the reference */
-  .mascot-bubble {
-    position: absolute; left: 6px; bottom: 192px;
-    width: max-content; max-width: min(340px, calc(100vw - 40px));
-    background: var(--card); color: var(--ink);
-    border: 2px solid var(--bn-edge); border-radius: 14px;
-    box-shadow: 5px 5px 0 rgba(0, 0, 0, .22);
-    padding: 12px 34px 12px 14px;
-    animation: bn-pop .18s ease-out;
-  }
-  .mascot-bubble::after {
-    content: ""; position: absolute; left: 30px; bottom: -9px; width: 14px; height: 14px;
-    background: var(--card); border-right: 2px solid var(--bn-edge); border-bottom: 2px solid var(--bn-edge);
-    transform: rotate(45deg);
-  }
-  .mascot-bubble.bad { border-color: var(--clay); }
-  .mascot-bubble.bad::after { border-color: var(--clay); }
-  .mascot-bubble.ok { border-color: var(--jade); }
-  .mascot-bubble.ok::after { border-color: var(--jade); }
-  .mb-text { margin: 0; font-size: 14.5px; line-height: 1.45; }
-  .mb-title { margin: 0 0 7px; font-weight: 700; font-size: 14.5px; }
-  .mb-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
-  .mb-rows li { font-size: 14px; line-height: 1.4; }
-  .mb-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 9px; }
-  .mb-go {
-    appearance: none; border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
-    font-size: 14px; font-weight: 700; color: var(--jade);
-  }
-  .mb-go:hover { text-decoration: underline; text-underline-offset: 3px; }
-  .mb-more { font-size: 11.5px; color: var(--muted); }
-  .mb-x {
-    position: absolute; top: 5px; right: 6px; appearance: none; border: 0; background: none; cursor: pointer;
-    color: var(--muted); font-size: 19px; line-height: 1; padding: 3px 6px; border-radius: 6px;
-  }
-  .mb-x:hover { color: var(--ink); background: var(--card-2); }
-  @keyframes bn-pop { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
-
-  @media (max-width: 620px) {
-    .mascot { left: 10px; }
-    .mascot-btn { width: 64px; height: 128px; }
-    .mascot-bubble { bottom: 136px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .mascot-btn img, .mascot-bubble { animation: none !important; }
   }
 
   /* points */
@@ -1022,30 +974,8 @@
   .an-item.sent .an-state { color: var(--jade); }
 
   /* ------------------------------------------------------------------ *
-   * Two floating things, no more: Judy's clock at the top right, and Judy
-   * herself standing on the "+ Log money" button at the bottom right.
-   * Neither takes clicks - they pass through to the page (the button and
-   * Judy's speech bubble are the only things you can press).
+   * The clock, top right. Scenery: clicks pass straight through it.
    * ------------------------------------------------------------------ */
-  .mascot {
-    --jh: 196px;                 /* Judy's height */
-    pointer-events: none; left: auto; top: auto; right: 52px;
-    bottom: calc(18px + env(safe-area-inset-bottom));
-  }
-  .mascot-btn { width: calc(var(--jh) / 2); height: var(--jh); cursor: default; }
-  /* On the button she peeks out from behind it: the button sits in front
-     (it is one layer up), her legs are cut away just below the belt, and
-     that cut line hides behind the middle of the button. */
-  .mascot.on-fab {
-    right: 62px;                 /* over the left end of the button, beside the + */
-    bottom: calc(41px - var(--jh) * .32 + env(safe-area-inset-bottom));
-  }
-  body.has-install .mascot.on-fab { bottom: calc(115px - var(--jh) * .32 + env(safe-area-inset-bottom)); }
-  .mascot.on-fab .mascot-btn img { clip-path: inset(0 0 32% 0); }
-  .mascot.on-fab .mascot-btn { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
-  .mascot-bubble { pointer-events: auto; top: auto; bottom: calc(100% + 8px); left: auto; right: -20px; }
-  .mascot-bubble::after { top: auto; bottom: -9px; left: auto; right: 44px; transform: rotate(45deg); }
-
   .clock-float {
     position: fixed; z-index: 44; pointer-events: none;
     top: calc(var(--stamp-b, 50px) + 8px); right: var(--stamp-r, 18px);
@@ -1065,6 +995,11 @@
     .clock-float { top: calc(var(--brand-b, 38px) + 8px); right: 12px; padding: 3px 9px 4px; }
     .mc-t { font-size: 15px; }
     .mc-d { font-size: 9.5px; }
-    .mascot { --jh: 170px; right: 50px; }
-    .mascot.on-fab { right: 58px; }
   }
+
+  /* ------------------------------------------------------------------ *
+   * smoothness: cards far off screen are not laid out or painted until
+   * they scroll near the view.
+   * ------------------------------------------------------------------ */
+  .day-card { content-visibility: auto; contain-intrinsic-size: auto 260px; }
+  .card.task { content-visibility: auto; contain-intrinsic-size: auto 150px; }

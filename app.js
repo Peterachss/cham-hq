@@ -154,7 +154,6 @@
     setSession(s) {
       SESSION = s;
       pushState = null; pushSavedThisSession = false;
-      mascotAutoDone = false; sessionKnown = true;
       if (!s) closeMoneySheet();
       /* Panels are built once and then left alone, so they have to be torn
          down when the person changes - otherwise signing in after somebody
@@ -409,17 +408,27 @@
       $("tab-"+n).setAttribute("aria-selected", String(n === v));
       $("view-"+n).hidden = n !== v;
     });
-    render();
+    renderNow();
   }
 
   /* ------------------------------------------------------------------ *
    * render
    * ------------------------------------------------------------------ */
+  /* Firestore can deliver several snapshots in a burst when the page opens
+     (tasks, updates, money, photos...). Each one asks for a render; they
+     are folded into a single render on the next frame. A tab click renders
+     straight away. */
+  let renderQueued = false;
   function render() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; renderNow(); });
+  }
+  function renderNow() {
+    renderQueued = false;
     renderGlance();
     renderNotify();
     renderFab();
-    renderMascot();
     if (S.view === "updates") { renderAnnounce(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
@@ -1150,7 +1159,6 @@
           try {
             await window.ChamLive.setStatus(t.id, k);
             if (k === "done") logActivity({ who: t.who, ref: t.id, event: "done", text: "Finished **" + t.title + "**" });
-            if (k === "done" && SESSION && t.who === SESSION.personKey) mascotSay("Nice one! \u201c" + t.title + "\u201d is done.");
             if (k === "blocked") logActivity({ who: t.who, ref: t.id, event: "stuck",
               text: "Stuck on **" + t.title + "**" + (t.note ? " \u2014 " + t.note : "") });
           }
@@ -2344,187 +2352,35 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Judy
-   *
-   * Says the one thing that matters most to whoever is looking, worked out
-   * from the real data: something overdue, something due, a wrap waiting,
-   * money for the sheet, money you are owed, how close the goal is. Tap it
-   * for the next thing. It speaks up by itself once per visit and then
-   * stays quiet unless asked, so it never nags.
+   * the clock's spot: under the "chat read to" date on wide screens, in
+   * the header on phones. Measured only when the header changes size -
+   * never on every render, which would force the browser to lay the page
+   * out again each time.
    * ------------------------------------------------------------------ */
-  let mascotIdx = 0;
-  let mascotAutoDone = false;
-  let mascotTimer = null;
-  let sessionKnown = false;   // wait for sign-in to settle so nobody gets two hellos
-
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
-  const nameOf = (k) => (PEOPLE[k] ? PEOPLE[k].name : k);
-  const andList = (ks) => ks.length < 2 ? nameOf(ks[0])
-    : ks.slice(0, -1).map(nameOf).join(", ") + " and " + nameOf(ks[ks.length - 1]);
-  const isLate = (t) => t.status !== "done" && (t.status === "late" || (t.due && t.due < TODAY));
-
-  /* The group-wide stuff: what's due next, who's carrying, who's dragging.
-     Friendly roasting - it only ever counts jobs, never says anything else. */
-  function teamLines() {
-    const out = [];
-    const people = (k) => k && k !== "team" && PEOPLE[k] && !/^Left /.test(PEOPLE[k].role || "");
-    const next = TASKS.filter((t) => t.status !== "done" && t.due && t.due >= TODAY)
-      .sort((a, b) => a.due.localeCompare(b.due))[0];
-    if (next) out.push({ go: ["tasks", "See all jobs"],
-      text: "Next job due: \u201c" + next.title + "\u201d \u2014 " + (people(next.who) ? nameOf(next.who) : "the whole group")
-        + ", " + relDay(next.due) + ". " + pick(["Clock\u2019s ticking.", "No pressure. (Pressure.)", "I\u2019m watching.", "Tick tock."]) });
-
-    const done = {}, late = {};
-    TASKS.forEach((t) => {
-      if (!people(t.who)) return;
-      if (t.status === "done") done[t.who] = (done[t.who] || 0) + 1;
-      if (isLate(t)) late[t.who] = (late[t.who] || 0) + 1;
-    });
-    const top = (m) => {
-      const max = Math.max(0, ...Object.values(m));
-      return max ? { n: max, who: Object.keys(m).filter((k) => m[k] === max) } : null;
-    };
-    const best = top(done), worst = top(late);
-    const pt = pointsTable();
-    if (pt.officers.length) out.push({ go: ["tracker", "See the points"],
-      text: "\ud83d\udc6e Officer of the week: " + andList(pt.officers) + " (" + pt.topLast + " pts). "
-        + pick(["Salute.", "Badge well earned.", "Everyone else: this could be you.", "Doing the actual work."]) });
-    if (best) out.push({ tone: "ok", go: ["tracker", "See the tracker"],
-      text: "\ud83c\udfc6 Best: " + andList(best.who) + ", " + best.n + " job" + (best.n === 1 ? "" : "s") + " done. "
-        + pick(["Carrots for " + (best.who.length > 1 ? "them" : nameOf(best.who[0])) + ".",
-                "Carrying the whole team, honestly.", "Promotion pending.", "Everyone else, take notes."]) });
-    if (worst) out.push({ tone: "bad", go: ["tasks", "See the late jobs"],
-      text: "\ud83d\udc0c Worst: " + andList(worst.who) + ", " + worst.n + " job" + (worst.n === 1 ? "" : "s") + " past the date. "
-        + pick(["I\u2019m writing you a ticket.", "Slower than the DMV.", "Hop to it!", "I believe in you. Barely."]) });
-    else if (TASKS.some((t) => t.status !== "done")) out.push({ tone: "ok",
-      text: "Nobody\u2019s late right now. Suspicious\u2026 but I\u2019ll allow it." });
-    return out;
-  }
-
-  function mascotLines() {
-    const out = [];
-    if (!SESSION) {
-      out.push({ text: "Ch\u1ea1m is a student-led nonprofit in Ho Chi Minh City. Members, sign in at the top to see your jobs." });
-      const tl = teamLines();
-      if (tl.length) out.push({ title: "Today\u2019s report", rows: tl.map((l) => l.text), go: ["tasks", "See all jobs"] });
-      return out;
-    }
-    const me = SESSION.personKey;
-    const first = (PEOPLE[me] && PEOPLE[me].name) || "there";
-    const mine = TASKS.filter((t) => t.who === me && t.status !== "done");
-    const byDue = (a, b) => (a.due || "").localeCompare(b.due || "");
-    const late = mine.filter((t) => t.due && t.due < TODAY).sort(byDue);
-    const soon = mine.filter((t) => t.due && t.due >= TODAY && days(TODAY, t.due) <= 2).sort(byDue);
-
-    if (late.length) out.push({ tone: "bad", go: ["tasks", "See my jobs"],
-      text: (late.length === 1 ? "One of your jobs is" : late.length + " of your jobs are") + " past the date \u2014 \u201c" + late[0].title + "\u201d." });
-    if (soon.length) out.push({ go: ["tasks", "Open my jobs"],
-      text: "Due " + relDay(soon[0].due) + ": \u201c" + soon[0].title + "\u201d." });
-    if (SESSION.admin && DRAFTS && DRAFTS.length) out.push({ go: ["updates", "Review it"],
-      text: "Tonight\u2019s chat wrap is waiting for you to look over." });
-    if (SESSION.finance && LEDGER) {
-      const n = LEDGER.filter((m) => m.status === "new").length;
-      if (n) out.push({ go: ["money", "Open Money"], text: n + " money line" + (n === 1 ? "" : "s") + " to copy into the finance sheet." });
-    }
-    if (LEDGER) {
-      const owed = LEDGER.filter((m) => m.kind === "out" && m.owed && !m.repaid && m.paidBy === me).reduce((a, m) => a + m.amount, 0);
-      if (owed) out.push({ text: "Ch\u1ea1m owes you " + fmtVnd(owed) + ". Thuan can see it on the Money tab." });
-    }
-    if (!late.length && !soon.length) out.push({ go: mine.length ? ["tasks", "My jobs"] : null,
-      text: "Nothing of yours is due in the next two days." + (mine.length
-        ? " You have " + mine.length + " open job" + (mine.length === 1 ? "" : "s") + "."
-        : " You\u2019re all clear.") });
-    if (LEDGER && LEDGER.length) {
-      const sm = moneySummary(LEDGER);
-      const next = MILESTONES.find((ms) => ms.at > sm.raised);
-      if (next && sm.raised > 0) out.push({ go: ["money", "See the goal"],
-        text: "We\u2019ve raised " + fmtVnd(sm.raised) + " after costs \u2014 " + Math.round(sm.raised / next.at * 100)
-          + "% of the way to " + shortVnd(next.at) + ". " + fmtVnd(next.at - sm.raised) + " to go!" });
-    }
-    if (pushState === "off") out.push({ text: "Want a ping when you\u2019re given a job? Turn on notifications in the green bar at the top." });
-    out.push({ text: "Spent money for Ch\u1ea1m? Tap + Log money on the right. It takes ten seconds." });
-
-    /* the team report leads: next job due, best, worst */
-    const tl = teamLines();
-    if (tl.length) out.unshift({ title: "Ch\u00e0o " + first + "! Today\u2019s report:", rows: tl.map((l) => l.text), go: ["tasks", "See all jobs"] });
-    else out[0] = { ...out[0], text: "Ch\u00e0o " + first + "! " + out[0].text };
-    return out;
-  }
-
-  function showBubble(line, count) {
-    const b = $("mascot-bubble");
-    b.replaceChildren();
-    b.className = "mascot-bubble" + (line.tone ? " " + line.tone : "");
-    b.appendChild(el("button", { class: "mb-x", type: "button", "aria-label": "Close", text: "\u00d7",
-      onclick: (e) => { e.stopPropagation(); hideBubble(); } }));
-    if (line.title) b.appendChild(el("p", { class: "mb-title", text: line.title }));
-    if (line.rows) b.appendChild(el("ul", { class: "mb-rows" }, line.rows.map((r) => el("li", { text: r }))));
-    if (line.text) b.appendChild(el("p", { class: "mb-text", text: line.text }));
-    const foot = el("div", { class: "mb-foot" });
-    if (line.go) foot.appendChild(el("button", { class: "mb-go", type: "button", text: line.go[1] + " \u2192",
-      onclick: () => { hideBubble(); setView(line.go[0]); window.scrollTo({ top: 0, behavior: "smooth" }); } }));
-    if (foot.childElementCount) b.appendChild(foot);
-    b.hidden = false;
-    $("mascot").classList.add("talking");
-  }
-  function hideBubble() {
-    clearTimeout(mascotTimer);
-    const b = $("mascot-bubble");
-    if (b) b.hidden = true;
-    $("mascot").classList.remove("talking");
-  }
-  function mascotSay(text) {
-    showBubble({ text, tone: "ok" }, 1);
-    clearTimeout(mascotTimer);
-    mascotTimer = setTimeout(hideBubble, 6000);
-  }
-
-  function renderMascot() {
-    const wrap = $("mascot");
-    if (!wrap) return;
-    wrap.hidden = false;
-    /* she stands on the "+ Log money" button when it's there, in the corner when it isn't */
-    const fab = $("log-fab");
-    wrap.classList.toggle("on-fab", Boolean(fab && !fab.hidden));
-    /* stand just under the header, however tall it is on this screen */
+  (function placeClock() {
     const top = document.querySelector("header.top");
-    if (top && !renderMascot.watching) {
-      renderMascot.watching = true;
-      const fit = () => {
-        const R = document.documentElement.style;
-        R.setProperty("--top-h", top.offsetHeight + "px");
-        /* on phones she stands inside the header, between its first line and the tabs */
-        const br = top.querySelector(".brandrow"), tb = top.querySelector(".tabs");
-        if (br && tb) {
-          R.setProperty("--brand-b", Math.round(br.getBoundingClientRect().bottom) + "px");
-          R.setProperty("--tabs-b", Math.round(tb.getBoundingClientRect().bottom) + "px");
-        }
-        /* on wider screens she stands right under the "chat read to" date */
-        const st = $("stamp");
-        if (st && st.offsetParent) {
-          const b = st.getBoundingClientRect();
-          R.setProperty("--stamp-b", Math.round(b.bottom) + "px");
-          R.setProperty("--stamp-r", Math.max(6, Math.round(document.documentElement.clientWidth - b.right)) + "px");
-        }
-      };
-      renderMascot.fit = fit;
-      window.addEventListener("resize", fit);
-      if (window.ResizeObserver) new ResizeObserver(fit).observe(top);
-    }
-    if (renderMascot.fit) renderMascot.fit();   // the date's width changes once data loads
-    /* speak up once per visit, a moment after the page settles, then go quiet */
-    if (!mascotAutoDone && sessionKnown) {
-      mascotAutoDone = true;
-      setTimeout(() => {
-        const lines = mascotLines();
-        mascotIdx = 0;
-        showBubble(lines[0], lines.length);
-        mascotTimer = setTimeout(hideBubble, 12000);
-      }, 1200);
-    }
-  }
-  /* Judy's clock: Ho Chi Minh City time, ticking every second, whatever
-     time zone the phone happens to be in. */
+    if (!top) return;
+    const fit = () => {
+      const R = document.documentElement.style;
+      const br = top.querySelector(".brandrow");
+      if (br) R.setProperty("--brand-b", Math.round(br.getBoundingClientRect().bottom) + "px");
+      const st = $("stamp");
+      if (st && st.offsetParent) {
+        const b = st.getBoundingClientRect();
+        R.setProperty("--stamp-b", Math.round(b.bottom) + "px");
+        R.setProperty("--stamp-r", Math.max(6, Math.round(document.documentElement.clientWidth - b.right)) + "px");
+      }
+    };
+    fit();
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => requestAnimationFrame(fit));
+      ro.observe(top);
+      if ($("stamp")) ro.observe($("stamp"));    // its text arrives with the data
+    } else window.addEventListener("resize", fit);
+  })();
+
+  /* The clock: Ho Chi Minh City time, ticking every second, whatever
+     time zone the phone happens to be in. Pauses while the tab is hidden. */
   (function mascotClock() {
     const t = $("mc-t"), sec = $("mc-s"), d = $("mc-d");
     if (!t) return;
@@ -2532,13 +2388,19 @@
     const hm = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
     const ss = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, second: "2-digit" });
     const day = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" });
+    let timer = null, lastHm = "", lastDay = "";
     function tick() {
       const now = new Date();
-      t.textContent = hm.format(now);
+      const h = hm.format(now), dd = day.format(now).replace(",", "").replace("Sept", "Sep");
+      if (h !== lastHm) { t.textContent = lastHm = h; }         // only touch what changed
+      if (dd !== lastDay) { d.textContent = lastDay = dd; }
       sec.textContent = ":" + ss.format(now).padStart(2, "0");
-      d.textContent = day.format(now).replace(",", "").replace("Sept", "Sep");
-      setTimeout(tick, 1000 - (Date.now() % 1000) + 5);   // land on the second
+      timer = setTimeout(tick, 1000 - (Date.now() % 1000) + 5);   // land on the second
     }
+    document.addEventListener("visibilitychange", () => {
+      clearTimeout(timer);
+      if (!document.hidden) tick();
+    });
     tick();
   })();
 

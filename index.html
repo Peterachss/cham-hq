@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=35" />
+<link rel="stylesheet" href="styles.css?v=36" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -144,23 +144,18 @@
   <button class="sheet-x" id="money-sheet-x" type="button" aria-label="Close">&times;</button>
   <div id="money-add" class="admin"></div>
 </dialog>
-<button class="fab" id="log-fab" type="button" hidden><span aria-hidden="true">+</span> Log money</button>
+<button class="fab" id="log-fab" type="button" hidden>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=36" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
+</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<!-- Judy's clock, top right -->
+<!-- the clock, top right -->
 <div class="clock-float" id="mascot-clock" aria-label="Time in Ho Chi Minh City">
   <span class="mc-t" id="mc-t">--:--</span><span class="mc-s" id="mc-s"></span>
   <span class="mc-d" id="mc-d"></span>
 </div>
 
-<!-- Judy, standing on the Log money button, with the day's report once per visit. Not clickable -
-     clicks go straight through her to whatever is underneath. -->
-<div class="mascot" id="mascot" hidden>
-  <div class="mascot-bubble" id="mascot-bubble" role="status" aria-live="polite" hidden></div>
-  <div class="mascot-btn" id="mascot-btn" aria-hidden="true">
-    <img src="judy.webp?v=35" alt="" width="80" height="160" decoding="async">
-  </div>
-</div>
 
 <div class="install" id="install" hidden>
   <img src="icons/icon-180.png" alt="" />
@@ -177,8 +172,8 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=35"></script>
-<script src="app.js?v=35"></script>
-<script type="module" src="live.js?v=35"></script>
+<script src="firebase-config.js?v=36"></script>
+<script src="app.js?v=36"></script>
+<script type="module" src="live.js?v=36"></script>
 </body>
 </html>
