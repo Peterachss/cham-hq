@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from "@firebase/rules-unit-testing";
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp
+  doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where
 } from "firebase/firestore";
 
 const RULES = readFileSync(process.env.RULES || "C:/Users/peter/cham-hq/firestore.rules", "utf8");
@@ -115,6 +115,11 @@ const cases = [
   ["admin marks the draft posted",           true,  () => updateDoc(doc(as(PETER), "chatDrafts/2026-09-26"), { status: "posted" })],
   ["member cannot touch the draft",          false, () => updateDoc(doc(as(EMILY), "chatDrafts/2026-09-26"), { status: "posted" })],
   ["nobody on the site creates a draft",     false, () => setDoc(doc(as(PETER), "chatDrafts/2026-09-27"), { status: "pending" })],
+  // the site LISTS pending drafts rather than fetching one - Firestore checks that separately
+  ["admin lists pending drafts (the site's query)", true,  () => getDocs(query(collection(as(PETER), "chatDrafts"), where("status", "==", "pending")))],
+  ["member cannot list drafts",              false, () => getDocs(query(collection(as(EMILY), "chatDrafts"), where("status", "==", "pending")))],
+  ["member lists money (the site's query)",  true,  () => getDocs(collection(as(EMILY), "expenses"))],
+  ["member lists tasks (the site's query)",  true,  () => getDocs(collection(as(EMILY), "tasks"))],
 ];
 
 let failed = 0;
