@@ -4,3 +4,7 @@
 *-firebase-adminsdk-*.json
 firebase-key.json
 .env
+
+# Python leaves these behind; never commit them
+__pycache__/
+*.pyc
