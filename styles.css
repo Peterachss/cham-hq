@@ -757,3 +757,18 @@
   }
   .nb-on .nb-text { font-size: 12.5px; color: var(--muted); }
   .nb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--jade); flex: 0 0 auto; }
+
+  /* the day in one line */
+  .daysum {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
+    font-size: 12.5px; color: var(--muted); margin: -4px 0 12px;
+  }
+  .ds-bit { color: var(--ink-2); font-weight: 500; }
+  .ds-bit.ok { color: var(--jade); }
+  .ds-bit.bad { color: var(--clay); }
+  .ds-sep { color: var(--line); }
+
+  /* the paste box: chatter starts un-ticked and steps back */
+  .draft .keep { flex: 0 0 auto; }
+  .draft.chatter select, .draft.chatter input[type="text"] { opacity: .45; }
+  .draft.chatter { text-decoration: none; }

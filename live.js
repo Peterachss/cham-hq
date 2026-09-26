@@ -227,7 +227,9 @@ if (!CONFIGURED) {
             tag: u.tag || null,
             auto: u.auto === true,
             event: u.event || null,
-            ref: u.ref || null
+            ref: u.ref || null,
+            amount: typeof u.amount === "number" ? u.amount : null,
+            kind: u.kind || null
           });
         });
         window.ChamHQ.setUpdates(rows);
@@ -331,6 +333,8 @@ if (!CONFIGURED) {
           date: u.date, who: u.who, text: u.text,
           key: u.key === true, tag: u.tag || null,
           auto: u.auto === true, event: u.event || null, ref: u.ref || null,
+          amount: typeof u.amount === "number" ? u.amount : null,
+          kind: u.kind || null,
           createdBy: who, createdAt: serverTimestamp()
         });
       }

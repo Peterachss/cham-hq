@@ -113,7 +113,8 @@
       let d = byKey.get(u.date);
       if (!d) { d = { date: u.date, label: null, tag: null, items: [] }; byKey.set(u.date, d); }
       if (u.tag && !d.tag) d.tag = u.tag;
-      d.items.push({ who: u.who, text: u.text, key: u.key, id: u.id, auto: u.auto === true });
+      d.items.push({ who: u.who, text: u.text, key: u.key, id: u.id, auto: u.auto === true,
+                     event: u.event || null, amount: u.amount, kind: u.kind });
     });
     return [...byKey.values()].sort((a, b) => {
       if (!a.date) return 1;
@@ -179,7 +180,8 @@
         LIVE_UPDATES.some((u) => u.auto && u.ref === entry.ref && u.event === entry.event && u.date === today)) return;
     window.ChamLive.addUpdates([{
       date: today, who: entry.who, text: entry.text,
-      key: entry.key === true, auto: true, event: entry.event, ref: entry.ref || null
+      key: entry.key === true, auto: true, event: entry.event, ref: entry.ref || null,
+      amount: typeof entry.amount === "number" ? entry.amount : null, kind: entry.kind || null
     }]).catch((err) => console.warn("Ch\u1ea1m HQ: activity line not saved", err));
   }
 
@@ -468,6 +470,38 @@
   }
 
   /* ----- updates ----- */
+  /* ------------------------------------------------------------------ *
+   * one line that says what a day added up to, worked out from what the
+   * site recorded - so it is counted, not guessed
+   * ------------------------------------------------------------------ */
+  function daySummary(items) {
+    const n = (ev) => items.filter((i) => i.event === ev).length;
+    const done = n("done"), stuck = n("stuck"), given = n("assign"), pics = n("photos");
+    const out = items.filter((i) => i.event === "money" && i.kind === "out" && typeof i.amount === "number")
+                     .reduce((a, i) => a + i.amount, 0);
+    const inn = items.filter((i) => i.event === "money" && i.kind === "in" && typeof i.amount === "number")
+                     .reduce((a, i) => a + i.amount, 0);
+    const said = items.filter((i) => !i.auto).length;
+
+    const bits = [];
+    if (done)  bits.push([done + " finished", "ok"]);
+    if (stuck) bits.push([stuck + " stuck", "bad"]);
+    if (given) bits.push([given + " new job" + (given === 1 ? "" : "s"), ""]);
+    if (out)   bits.push([fmtVnd(out) + " spent", ""]);
+    if (inn)   bits.push([fmtVnd(inn) + " in", "ok"]);
+    if (pics)  bits.push([pics + " photo post" + (pics === 1 ? "" : "s"), ""]);
+    if (said && bits.length) bits.push([said + " update" + (said === 1 ? "" : "s"), ""]);
+    /* a day that is only people's words needs no counting line */
+    if (!bits.length) return null;
+
+    const line = el("div", { class: "daysum", "aria-label": "The day in short" });
+    bits.forEach(([t, tone], i) => {
+      if (i) line.appendChild(el("span", { class: "ds-sep", "aria-hidden": "true", text: "\u00b7" }));
+      line.appendChild(el("span", { class: "ds-bit" + (tone ? " " + tone : ""), text: t }));
+    });
+    return line;
+  }
+
   function renderFeed() {
     const box = $("upd-filters");
     if (!box.childElementCount) {
@@ -495,6 +529,7 @@
         day.date ? el("span", { class: "rel", text: relDay(day.date) }) : null,
         day.tag ? el("span", { class: "tagline", text: day.tag }) : null
       ]);
+      const sum = daySummary(day.items);
       const bullets = el("div", { class: "bullets" });
       items.forEach((i) => {
         const row = el("div", { class: "bullet" + (i.key ? " key" : "") + (i.auto ? " auto" : "") }, [
@@ -515,7 +550,7 @@
         }
         bullets.appendChild(row);
       });
-      feed.appendChild(el("article", { class: "card day-card" }, [head, bullets]));
+      feed.appendChild(el("article", { class: "card day-card" }, [head, sum, bullets]));
     });
     if (!shown) feed.appendChild(el("div", { class: "empty-state", text: "Nothing from them in the chat this stretch." }));
 
@@ -599,6 +634,29 @@
     if (t.length < 2) return true;
     if (!/[a-z\u00C0-\u1EF9\d]/i.test(t)) return true;   // emoji or punctuation only
     return CHAT_NOISE.some((re) => re.test(t));
+  }
+
+  /* Is this line chatter or something worth recording? A guess, made in
+     the open: every line still shows, chatter just starts un-ticked, and
+     one click keeps it. Anything with a number, a date, money, or a
+     decision in it is kept, however short. */
+  const KEEP_SIGNAL = new RegExp([
+    "\\d",                                                     // amounts, dates, times, counts
+    "\\b(today|tomorrow|tonight|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|deadline|due|by then)\\b",
+    "\\b(k|tr|vnd|dong|price|cost|budget|paid|pay|spent|bought|sell|sold|profit|money|fund)\\b",
+    "\\b(approved|approve|decided|decide|confirmed|confirm|agreed|cancel|cancelled|postpone|moved|booked)\\b",
+    "\\b(need|needs|will|going to|gonna|must|should|plan|planned|assigned|finished|done|sent|submitted|started)\\b",
+    "\\b(meeting|sale|event|proposal|design|merch|poster|order|form|sheet|deck|slides)\\b"
+  ].join("|"), "i");
+  const FILLER = /^(ok(ay)?|k+|yes+|yeah+|ya|yep|yup|no+|nope|lol+|lmao+|ha(ha)+|h+a+|hha+|he(he)+|omg|same|true|fr|bruh+|nice|cool|thanks?|thank you|ty|sure|wait|what|huh|oh+|ah+|hmm+|damn|bro|guys|oh yeah( guys)?|good job|gj|gl|w|l)[.!?\s]*$/i;
+
+  function isChatter(text) {
+    const t = String(text).trim();
+    if (!t) return true;
+    if (FILLER.test(t)) return true;
+    if (/^@[\w.]+\s*$/.test(t)) return true;                    // a bare @mention
+    if (KEEP_SIGNAL.test(t)) return false;
+    return t.length < 28;                                       // short and signal-free
   }
 
   /** a pasted chat -> [{who, text}], attributing by the name headings */
@@ -694,22 +752,26 @@
         }
         pmsg.classList.remove("bad");
         lines.forEach((entry) => {
+          const chatter = isChatter(entry.text);
+          const keep = el("input", { type: "checkbox", "aria-label": "Post this line" });
+          keep.checked = !chatter;
           const w = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who said it" }));
           w.value = entry.who;
           const t = el("input", { class: "ad-in wide", type: "text", value: entry.text, "aria-label": "What was said" });
           const k = el("input", { type: "checkbox", "aria-label": "Highlight this one" });
-          const row = el("div", { class: "draft" }, [
+          const row = el("div", { class: "draft" + (chatter ? " chatter" : "") }, [
+            el("label", { class: "ad-check keep", title: chatter ? "Looks like chatter - tick to post it anyway" : "Will be posted" }, [keep]),
             w, t,
-            el("label", { class: "ad-check" }, [k, el("span", { text: "highlight" })]),
-            el("button", { class: "act ghost", type: "button", text: "drop",
-              onclick: () => row.remove() })
+            el("label", { class: "ad-check" }, [k, el("span", { text: "highlight" })])
           ]);
-          row._read = () => ({ who: w.value, text: t.value.trim(), key: k.checked });
+          keep.addEventListener("change", () => row.classList.toggle("chatter", !keep.checked));
+          row._read = () => ({ who: w.value, text: t.value.trim(), key: k.checked, keep: keep.checked });
           drafts.appendChild(row);
         });
         const guessed = lines.filter((l) => l.who !== "team").length;
-        pmsg.textContent = lines.length + " line" + (lines.length === 1 ? "" : "s") + " ready, "
-          + guessed + " matched to a person. Fix any that are wrong, then post.";
+        const chat = lines.filter((l) => isChatter(l.text)).length;
+        pmsg.textContent = (lines.length - chat) + " worth keeping, " + chat + " look like chatter and are un-ticked. "
+          + guessed + " of " + lines.length + " matched to a person \u2014 check the names, then post.";
         return lines.length;
     }
 
@@ -721,10 +783,10 @@
         /* Sorting first is easy to skip, so do it for them rather than
            saying "nothing to post" at somebody who has clearly pasted. */
         if (!drafts.childElementCount && paste.value.trim()) sortIntoLines();
-        const rows = [...drafts.children].map((r) => r._read()).filter((r) => r.text);
+        const rows = [...drafts.children].map((r) => r._read()).filter((r) => r.text && r.keep);
         if (!rows.length) {
           pmsg.textContent = paste.value.trim()
-            ? "Nothing usable in there."
+            ? "Nothing ticked to post \u2014 tick the lines you want, or it was all chatter."
             : "Paste the messages into the box first.";
           pmsg.classList.add("bad");
           return;
@@ -1679,6 +1741,7 @@
           notes: notes.value.trim(), owed: owedBox.checked, receipt: rc
         });
         logActivity({ who: SESSION.personKey, ref: "money-" + Date.now(), event: "money",
+          amount: n, kind,
           text: (kind === "out" ? "Spent " : "Brought in ") + "**" + fmtVnd(n) + "** \u2014 " + loggedDesc });
         amount.value = ""; desc.value = ""; notes.value = ""; line.value = ""; receipt.value = "";
         owedBox.checked = false; amountSeen.textContent = ""; more.open = false; date.value = today;
