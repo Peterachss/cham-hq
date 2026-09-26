@@ -2398,7 +2398,6 @@
     const foot = el("div", { class: "mb-foot" });
     if (line.go) foot.appendChild(el("button", { class: "mb-go", type: "button", text: line.go[1] + " \u2192",
       onclick: () => { hideBubble(); setView(line.go[0]); window.scrollTo({ top: 0, behavior: "smooth" }); } }));
-    if (count > 1) foot.appendChild(el("span", { class: "mb-more", text: "Tap me for the next one" }));
     if (foot.childElementCount) b.appendChild(foot);
     b.hidden = false;
     $("mascot").classList.add("talking");
@@ -2450,18 +2449,23 @@
       }, 1200);
     }
   }
-  (function mascotWiring() {
-    const btn = $("mascot-btn");
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      clearTimeout(mascotTimer);
-      const lines = mascotLines();
-      const b = $("mascot-bubble");
-      mascotIdx = b.hidden ? mascotIdx % lines.length : (mascotIdx + 1) % lines.length;
-      showBubble(lines[mascotIdx], lines.length);
-      const svg = btn.querySelector("img");
-      svg.classList.remove("hop"); void svg.getBoundingClientRect(); svg.classList.add("hop");
-    });
+  /* Judy's clock: Ho Chi Minh City time, ticking every second, whatever
+     time zone the phone happens to be in. */
+  (function mascotClock() {
+    const t = $("mc-t"), sec = $("mc-s"), d = $("mc-d");
+    if (!t) return;
+    const TZ = "Asia/Ho_Chi_Minh";
+    const hm = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+    const ss = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, second: "2-digit" });
+    const day = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" });
+    function tick() {
+      const now = new Date();
+      t.textContent = hm.format(now);
+      sec.textContent = ":" + ss.format(now).padStart(2, "0");
+      d.textContent = day.format(now).replace(",", "").replace("Sept", "Sep");
+      setTimeout(tick, 1000 - (Date.now() % 1000) + 5);   // land on the second
+    }
+    tick();
   })();
 
   function renderMoney() {
