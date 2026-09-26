@@ -992,46 +992,6 @@
   .officer-n.sm { font-size: 15px; font-family: var(--sans); }
   .officer-s { font-size: 12.5px; color: var(--ink-2); }
 
-  /* Judy stands in the top-right corner, just under the sticky header
-     (its height is measured into --top-h), and her bubble drops down
-     below her. On wide screens she stands in the empty gutter. */
-  .mascot { left: auto; bottom: auto; right: 10px; top: calc(var(--top-h, 110px) + 8px); }
-  .mascot-bubble { bottom: auto; top: calc(100% + 12px); left: auto; right: -2px; }
-  .mascot-bubble::after { bottom: auto; top: -9px; left: auto; right: 34px; transform: rotate(225deg); }
-  @media (max-width: 620px) {
-    .mascot { right: 6px; left: auto; }
-    .mascot-btn { width: 56px; height: 112px; }
-    .mascot-bubble { bottom: auto; right: -2px; }
-    .mascot-bubble::after { right: 20px; }
-  }
-  @media (min-width: 781px) {
-    .mascot { top: calc(var(--stamp-b, 50px) + 4px); right: var(--stamp-r, 12px); }
-    .mascot-btn { width: 75px; height: 150px; }   /* short enough to clear the notice's "Not now" */
-  }
-
-  /* Judy is scenery, not a button: clicks pass straight through her.
-     Only her bubble (with its x and link) takes clicks. */
-  .mascot { pointer-events: none; }
-  .mascot-bubble { pointer-events: auto; }
-  .mascot-btn { cursor: default; }
-
-  /* her live clock, held out to her left at badge height */
-  .mascot-clock {
-    position: absolute; right: calc(100% - 4px); top: 22%;
-    display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 1px;
-    padding: 6px 11px 7px; border-radius: 12px;
-    background: var(--card); color: var(--ink);
-    border: 2px solid var(--bn-edge); box-shadow: 3px 3px 0 rgba(0, 0, 0, .22);
-    font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap;
-  }
-  .mc-t { font-size: 20px; font-weight: 600; letter-spacing: .02em; line-height: 1.1; }
-  .mc-s { font-size: 12px; color: var(--muted); }
-  .mc-d { grid-column: 1 / -1; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  @media (max-width: 620px) {
-    .mascot-clock { padding: 4px 8px 5px; top: 18%; }
-    .mc-t { font-size: 16px; }
-  }
-
   /* announce */
   .announce {
     margin: 0 0 18px; padding: 14px 16px 12px; border-radius: 14px;
@@ -1061,16 +1021,41 @@
   .an-state { grid-column: 2; grid-row: 1 / span 2; font-size: 12px; color: var(--marigold); white-space: nowrap; }
   .an-item.sent .an-state { color: var(--jade); }
 
-  /* Phones: no date pill, so Judy stands inside the header - from just under
-     its first line down to the bottom of the tabs, on the right. Clicks pass
-     through her, so the tab under her feet still works. */
+  /* ------------------------------------------------------------------ *
+   * Two floating things, no more: Judy's clock at the top right, and Judy
+   * herself standing on the "+ Log money" button at the bottom right.
+   * Neither takes clicks - they pass through to the page (the button and
+   * Judy's speech bubble are the only things you can press).
+   * ------------------------------------------------------------------ */
+  .mascot {
+    pointer-events: none; left: auto; top: auto; right: 52px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+  .mascot.on-fab { bottom: calc(54px + env(safe-area-inset-bottom)); }   /* feet on the button */
+  body.has-install .mascot.on-fab { bottom: calc(128px + env(safe-area-inset-bottom)); }
+  .mascot-btn { width: 62px; height: 124px; cursor: default; }
+  .mascot-bubble { pointer-events: auto; top: auto; bottom: calc(100% + 8px); left: auto; right: -20px; }
+  .mascot-bubble::after { top: auto; bottom: -9px; left: auto; right: 44px; transform: rotate(45deg); }
+
+  .clock-float {
+    position: fixed; z-index: 44; pointer-events: none;
+    top: calc(var(--stamp-b, 50px) + 8px); right: var(--stamp-r, 18px);
+    display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 1px;
+    padding: 6px 11px 7px; border-radius: 12px;
+    background: var(--card); color: var(--ink);
+    border: 2px solid var(--bn-edge, #5b4a8a); box-shadow: 3px 3px 0 rgba(0, 0, 0, .22);
+    font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap;
+    --bn-edge: #5b4a8a;
+  }
+  @media (prefers-color-scheme: dark) { .clock-float { --bn-edge: #b3a3e6; } }
+  .mc-t { font-size: 20px; font-weight: 600; letter-spacing: .02em; line-height: 1.1; }
+  .mc-s { font-size: 12px; color: var(--muted); }
+  .mc-d { grid-column: 1 / -1; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   @media (max-width: 780px) {
-    .mascot { top: calc(var(--brand-b, 56px) + 6px); right: 8px; }
-    .mascot-btn {
-      height: calc(var(--tabs-b, 150px) - var(--brand-b, 56px) - 10px);
-      width: calc((var(--tabs-b, 150px) - var(--brand-b, 56px) - 10px) / 2);
-    }
-    .mascot-clock { top: 4px; right: calc(100% + 2px); padding: 3px 8px 4px; }
+    /* phones have no date pill: the clock sits in the header, right of "Sign out" */
+    .clock-float { top: calc(var(--brand-b, 38px) + 8px); right: 12px; padding: 3px 9px 4px; }
     .mc-t { font-size: 15px; }
     .mc-d { font-size: 9.5px; }
+    .mascot { right: 50px; }
+    .mascot-btn { width: 54px; height: 108px; }
   }

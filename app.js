@@ -2483,6 +2483,9 @@
     const wrap = $("mascot");
     if (!wrap) return;
     wrap.hidden = false;
+    /* she stands on the "+ Log money" button when it's there, in the corner when it isn't */
+    const fab = $("log-fab");
+    wrap.classList.toggle("on-fab", Boolean(fab && !fab.hidden));
     /* stand just under the header, however tall it is on this screen */
     const top = document.querySelector("header.top");
     if (top && !renderMascot.watching) {
