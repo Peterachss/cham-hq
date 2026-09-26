@@ -1,5 +1,10 @@
 # Turning on sign-in and the morning email
 
+> **Status, 26 Sep 2026:** steps 1–7 are done - the project exists, sign-in works, the
+> rules are published (now by `scripts/deploy_rules.py`, not by pasting), all nine
+> members are in, and the tasks are imported. For what is left, see **README.md →
+> One-time setup still to do**. This file is kept as the record of how it was set up.
+
 Right now the site works exactly as it always has: anyone with the link reads it,
 tasks come from `data.json`, nobody signs in. **Nothing below is required.** Do it
 only when you want members signing in and ticking their own jobs off.
