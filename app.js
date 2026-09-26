@@ -2173,7 +2173,7 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Chạm's bunny
+   * Judy
    *
    * Says the one thing that matters most to whoever is looking, worked out
    * from the real data: something overdue, something due, a wrap waiting,
@@ -2186,10 +2186,52 @@
   let mascotTimer = null;
   let sessionKnown = false;   // wait for sign-in to settle so nobody gets two hellos
 
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const nameOf = (k) => (PEOPLE[k] ? PEOPLE[k].name : k);
+  const andList = (ks) => ks.length < 2 ? nameOf(ks[0])
+    : ks.slice(0, -1).map(nameOf).join(", ") + " and " + nameOf(ks[ks.length - 1]);
+  const isLate = (t) => t.status !== "done" && (t.status === "late" || (t.due && t.due < TODAY));
+
+  /* The group-wide stuff: what's due next, who's carrying, who's dragging.
+     Friendly roasting - it only ever counts jobs, never says anything else. */
+  function teamLines() {
+    const out = [];
+    const people = (k) => k && k !== "team" && PEOPLE[k] && !/^Left /.test(PEOPLE[k].role || "");
+    const next = TASKS.filter((t) => t.status !== "done" && t.due && t.due >= TODAY)
+      .sort((a, b) => a.due.localeCompare(b.due))[0];
+    if (next) out.push({ go: ["tasks", "See all jobs"],
+      text: "Next job due: \u201c" + next.title + "\u201d \u2014 " + (people(next.who) ? nameOf(next.who) : "the whole group")
+        + ", " + relDay(next.due) + ". " + pick(["Clock\u2019s ticking.", "No pressure. (Pressure.)", "I\u2019m watching.", "Tick tock."]) });
+
+    const done = {}, late = {};
+    TASKS.forEach((t) => {
+      if (!people(t.who)) return;
+      if (t.status === "done") done[t.who] = (done[t.who] || 0) + 1;
+      if (isLate(t)) late[t.who] = (late[t.who] || 0) + 1;
+    });
+    const top = (m) => {
+      const max = Math.max(0, ...Object.values(m));
+      return max ? { n: max, who: Object.keys(m).filter((k) => m[k] === max) } : null;
+    };
+    const best = top(done), worst = top(late);
+    if (best) out.push({ tone: "ok", go: ["tracker", "See the tracker"],
+      text: "\ud83c\udfc6 Best: " + andList(best.who) + ", " + best.n + " job" + (best.n === 1 ? "" : "s") + " done. "
+        + pick(["Carrots for " + (best.who.length > 1 ? "them" : nameOf(best.who[0])) + ".",
+                "Carrying the whole team, honestly.", "Promotion pending.", "Everyone else, take notes."]) });
+    if (worst) out.push({ tone: "bad", go: ["tasks", "See the late jobs"],
+      text: "\ud83d\udc0c Worst: " + andList(worst.who) + ", " + worst.n + " job" + (worst.n === 1 ? "" : "s") + " past the date. "
+        + pick(["I\u2019m writing you a ticket.", "Slower than the DMV.", "Hop to it!", "I believe in you. Barely."]) });
+    else if (TASKS.some((t) => t.status !== "done")) out.push({ tone: "ok",
+      text: "Nobody\u2019s late right now. Suspicious\u2026 but I\u2019ll allow it." });
+    return out;
+  }
+
   function mascotLines() {
     const out = [];
     if (!SESSION) {
       out.push({ text: "Ch\u1ea1m is a student-led nonprofit in Ho Chi Minh City. Members, sign in at the top to see your jobs." });
+      const tl = teamLines();
+      if (tl.length) out.push({ title: "Today\u2019s report", rows: tl.map((l) => l.text), go: ["tasks", "See all jobs"] });
       return out;
     }
     const me = SESSION.personKey;
@@ -2227,7 +2269,10 @@
     if (pushState === "off") out.push({ text: "Want a ping when you\u2019re given a job? Turn on notifications in the green bar at the top." });
     out.push({ text: "Spent money for Ch\u1ea1m? Tap + Log money on the right. It takes ten seconds." });
 
-    out[0] = { ...out[0], text: "Ch\u00e0o " + first + "! " + out[0].text };
+    /* the team report leads: next job due, best, worst */
+    const tl = teamLines();
+    if (tl.length) out.unshift({ title: "Ch\u00e0o " + first + "! Today\u2019s report:", rows: tl.map((l) => l.text), go: ["tasks", "See all jobs"] });
+    else out[0] = { ...out[0], text: "Ch\u00e0o " + first + "! " + out[0].text };
     return out;
   }
 
@@ -2237,7 +2282,9 @@
     b.className = "mascot-bubble" + (line.tone ? " " + line.tone : "");
     b.appendChild(el("button", { class: "mb-x", type: "button", "aria-label": "Close", text: "\u00d7",
       onclick: (e) => { e.stopPropagation(); hideBubble(); } }));
-    b.appendChild(el("p", { class: "mb-text", text: line.text }));
+    if (line.title) b.appendChild(el("p", { class: "mb-title", text: line.title }));
+    if (line.rows) b.appendChild(el("ul", { class: "mb-rows" }, line.rows.map((r) => el("li", { text: r }))));
+    if (line.text) b.appendChild(el("p", { class: "mb-text", text: line.text }));
     const foot = el("div", { class: "mb-foot" });
     if (line.go) foot.appendChild(el("button", { class: "mb-go", type: "button", text: line.go[1] + " \u2192",
       onclick: () => { hideBubble(); setView(line.go[0]); window.scrollTo({ top: 0, behavior: "smooth" }); } }));
@@ -2282,7 +2329,7 @@
       const b = $("mascot-bubble");
       mascotIdx = b.hidden ? mascotIdx % lines.length : (mascotIdx + 1) % lines.length;
       showBubble(lines[mascotIdx], lines.length);
-      const svg = btn.querySelector("svg");
+      const svg = btn.querySelector("img");
       svg.classList.remove("hop"); void svg.getBoundingClientRect(); svg.classList.add("hop");
     });
   })();

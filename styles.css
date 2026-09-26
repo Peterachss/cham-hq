@@ -899,46 +899,35 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Chạm's bunny - flat and outlined, like the chamdreams.org mascot
+   * Judy - the mascot in the corner
    * ------------------------------------------------------------------ */
   .mascot {
     position: fixed; left: 14px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 44;
     --bn-line: #2c3a38; --bn-fur: #dcd8e6; --bn-belly: #f1eff6; --bn-inner: #f2a9b3;
-    --bn-edge: #2c3a38;
+    --bn-edge: #5b4a8a;
   }
-  @media (prefers-color-scheme: dark) { .mascot { --bn-edge: #9fb3ab; } }
+  @media (prefers-color-scheme: dark) { .mascot { --bn-edge: #b3a3e6; } }
   .mascot-btn {
     appearance: none; border: 0; background: none; padding: 0; cursor: pointer; display: block;
-    width: 84px; height: 102px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .28));
+    width: 96px; height: 125px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .28));
   }
   .mascot-btn:focus-visible { outline: 3px solid var(--jade); outline-offset: 2px; border-radius: 14px; }
-  .mascot-btn svg { width: 100%; height: 100%; overflow: visible; transform-origin: 50% 100%; animation: bn-bob 3.4s ease-in-out infinite; }
-  .bn-fur { fill: var(--bn-fur); stroke: var(--bn-line); stroke-width: 3; }
-  .bn-inner { fill: var(--bn-inner); }
-  .bn-belly { fill: var(--bn-belly); }
-  .bn-ink { fill: var(--bn-line); }
-  .bn-shine { fill: #fff; }
-  .bn-blush { fill: #f2a7b0; opacity: .85; }
-  .bn-nose { fill: #e98a96; stroke: var(--bn-line); stroke-width: 1.3; stroke-linejoin: round; }
-  .bn-line { fill: none; stroke: var(--bn-line); stroke-width: 3; stroke-linecap: round; }
-  .bn-tooth { fill: #fff; stroke: var(--bn-line); stroke-width: 1; }
-  .bn-cookie { fill: #e0b170; stroke: var(--bn-line); stroke-width: 2.5; }
-  .bn-chip { fill: #7a4b2a; }
-  .bn-shadow { fill: rgba(0, 0, 0, .22); }
-  .bn-ear-r { transform-origin: 63px 55px; transform-box: view-box; animation: bn-twitch 7s ease-in-out infinite; }
-  .bn-wave { transform-origin: 78px 72px; transform-box: view-box; }
-  .mascot.talking .bn-wave, .mascot-btn:hover .bn-wave { animation: bn-wave .7s ease-in-out 2; }
-  .mascot-btn svg.hop { animation: bn-hop .45s ease-out, bn-bob 3.4s ease-in-out .45s infinite; }
+  .mascot-btn img {
+    display: block; width: 100%; height: 100%; object-fit: cover;
+    border-radius: 18px; border: 3px solid var(--card); background: var(--card);
+    transform-origin: 50% 100%; animation: bn-bob 3.4s ease-in-out infinite;
+  }
+  .mascot.talking .mascot-btn img { animation: bn-bob 3.4s ease-in-out infinite, bn-tilt .9s ease-in-out 1; }
+  .mascot-btn img.hop { animation: bn-hop .45s ease-out, bn-bob 3.4s ease-in-out .45s infinite; }
 
   @keyframes bn-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-  @keyframes bn-twitch { 0%, 88%, 100% { transform: rotate(0); } 91% { transform: rotate(-10deg); } 94% { transform: rotate(5deg); } }
-  @keyframes bn-wave { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-22deg); } }
+  @keyframes bn-tilt { 0%, 100% { rotate: 0deg; } 30% { rotate: -6deg; } 65% { rotate: 4deg; } }
   @keyframes bn-hop { 0% { transform: translateY(0); } 40% { transform: translateY(-12px); } 100% { transform: translateY(0); } }
 
   /* the speech bubble: a hard offset shadow and a tail, like the reference */
   .mascot-bubble {
-    position: absolute; left: 6px; bottom: 112px;
-    width: max-content; max-width: min(300px, calc(100vw - 40px));
+    position: absolute; left: 6px; bottom: 136px;
+    width: max-content; max-width: min(340px, calc(100vw - 40px));
     background: var(--card); color: var(--ink);
     border: 2px solid var(--bn-edge); border-radius: 14px;
     box-shadow: 5px 5px 0 rgba(0, 0, 0, .22);
@@ -955,6 +944,9 @@
   .mascot-bubble.ok { border-color: var(--jade); }
   .mascot-bubble.ok::after { border-color: var(--jade); }
   .mb-text { margin: 0; font-size: 14.5px; line-height: 1.45; }
+  .mb-title { margin: 0 0 7px; font-weight: 700; font-size: 14.5px; }
+  .mb-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+  .mb-rows li { font-size: 14px; line-height: 1.4; }
   .mb-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 9px; }
   .mb-go {
     appearance: none; border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
@@ -971,9 +963,9 @@
 
   @media (max-width: 620px) {
     .mascot { left: 10px; }
-    .mascot-btn { width: 66px; height: 80px; }
-    .mascot-bubble { bottom: 90px; }
+    .mascot-btn { width: 66px; height: 86px; }
+    .mascot-bubble { bottom: 97px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .mascot-btn svg, .bn-ear-r, .bn-wave, .mascot-bubble { animation: none !important; }
+    .mascot-btn img, .mascot-bubble { animation: none !important; }
   }
