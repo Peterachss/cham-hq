@@ -93,6 +93,21 @@ service cloud.firestore {
       allow create:               if false;
     }
 
+    // The Announce box. Admins file a message under their own name as
+    // "pending"; the sender (service account) pushes it to everyone and
+    // marks it sent. Nobody on the site can edit one or pretend it was sent.
+    match /announcements/{annId} {
+      allow read:   if isMember();
+      allow create: if isAdmin()
+                    && request.resource.data.by == me().personKey
+                    && request.resource.data.createdBy == email()
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 300;
+      allow update, delete: if false;
+    }
+
     match /tasks/{taskId} {
       allow read:            if isMember();
       allow create, delete:  if isAdmin();

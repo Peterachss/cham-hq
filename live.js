@@ -33,7 +33,7 @@ if (!CONFIGURED) {
   } = auth_;
   const {
     getFirestore, collection, doc, getDoc, onSnapshot,
-    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where
+    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, orderBy, limit
   } = store_;
 
   /* a subscription's document id is a hash of its endpoint, so the same
@@ -68,6 +68,7 @@ if (!CONFIGURED) {
   };
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
+  let unsubAnn = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -140,6 +141,7 @@ if (!CONFIGURED) {
     if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
     if (unsubMoney) { unsubMoney(); unsubMoney = null; }
     if (unsubDrafts) { unsubDrafts(); unsubDrafts = null; }
+    if (unsubAnn) { unsubAnn(); unsubAnn = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
@@ -148,6 +150,7 @@ if (!CONFIGURED) {
       window.ChamHQ.setPhotos(null);
       window.ChamHQ.setMoney(null);
       window.ChamHQ.setDrafts(null);
+      window.ChamHQ.setAnnouncements(null);
       showSignedOut();
       return;
     }
@@ -301,6 +304,20 @@ if (!CONFIGURED) {
           window.ChamHQ.setDrafts(rows);
         },
         (err) => { console.error("Chạm HQ: lost the chat drafts", err); window.ChamHQ.setDrafts(null); });
+
+      // the last few announcements, so the sender sees "Sent to 4 people"
+      unsubAnn = onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(4)),
+        (qs) => {
+          const rows = [];
+          qs.forEach((d) => {
+            const v = d.data();
+            rows.push({ id: d.id, text: v.text || "", by: v.by || "", status: v.status || "pending",
+              sentTo: typeof v.sentTo === "number" ? v.sentTo : null,
+              at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : new Date() });
+          });
+          window.ChamHQ.setAnnouncements(rows);
+        },
+        (err) => { console.error("Chạm HQ: lost the announcements", err); window.ChamHQ.setAnnouncements(null); });
     }
   });
 
@@ -397,6 +414,12 @@ if (!CONFIGURED) {
         keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
         device: device || "",
         createdAt: serverTimestamp()
+      });
+    },
+    async announce(text, by, byName) {
+      await addDoc(collection(db, "announcements"), {
+        text, by, byName: byName || "", status: "pending",
+        createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
       });
     },
     async setDraftStatus(id, status) {

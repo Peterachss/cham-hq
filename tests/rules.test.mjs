@@ -36,11 +36,15 @@ async function seed() {
     await setDoc(doc(db, "updates", "u-emily"), { who: "emily", text: "hi", date: "2026-09-26" });
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
     await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
+    await setDoc(doc(db, "announcements", "a-1"), { text: "hi", by: "peter", createdBy: PETER, status: "pending" });
   });
 }
 
 const as = (email) => env.authenticatedContext(email, { email }).firestore();
 const anon = () => env.unauthenticatedContext().firestore();
+
+const ANN = (by, key, extra = {}) => ({ text: "Are we still doing the ice cream sale?", by: key, byName: "x",
+  createdBy: by, status: "pending", createdAt: serverTimestamp(), ...extra });
 
 const EXP = (by, extra = {}) => ({ kind: "out", amount: 250000, description: "Beads", category: "Events",
   status: "new", createdBy: by, receipt: "", ...extra });
@@ -120,6 +124,20 @@ const cases = [
   ["member cannot list drafts",              false, () => getDocs(query(collection(as(EMILY), "chatDrafts"), where("status", "==", "pending")))],
   ["member lists money (the site's query)",  true,  () => getDocs(collection(as(EMILY), "expenses"))],
   ["member lists tasks (the site's query)",  true,  () => getDocs(collection(as(EMILY), "tasks"))],
+
+  // ---------------------------------------------------------------- announcements
+  ["admin announces under own name",         true,  () => addDoc(collection(as(PETER), "announcements"), ANN(PETER, "peter"))],
+  ["member cannot announce",                 false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily"))],
+  ["finance cannot announce",                false, () => addDoc(collection(as(THUAN), "announcements"), ANN(THUAN, "thuan"))],
+  ["admin cannot announce as someone else",  false, () => addDoc(collection(as(PETER), "announcements"), ANN(PETER, "bach"))],
+  ["admin cannot fake the sender email",     false, () => addDoc(collection(as(PETER), "announcements"), ANN(BACH, "peter"))],
+  ["cannot file one as already sent",        false, () => addDoc(collection(as(PETER), "announcements"), ANN(PETER, "peter", { status: "sent" }))],
+  ["empty announcement refused",             false, () => addDoc(collection(as(PETER), "announcements"), ANN(PETER, "peter", { text: "" }))],
+  ["over 300 characters refused",            false, () => addDoc(collection(as(PETER), "announcements"), ANN(PETER, "peter", { text: "x".repeat(301) }))],
+  ["member reads announcements (the site's query)", true, () => getDocs(collection(as(EMILY), "announcements"))],
+  ["stranger cannot read announcements",     false, () => getDocs(collection(as(STRANGER), "announcements"))],
+  ["admin cannot mark one sent",             false, () => updateDoc(doc(as(PETER), "announcements/a-1"), { status: "sent" })],
+  ["admin cannot delete one",                false, () => deleteDoc(doc(as(PETER), "announcements/a-1"))],
 ];
 
 let failed = 0;

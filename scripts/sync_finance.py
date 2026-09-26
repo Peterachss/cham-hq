@@ -18,8 +18,15 @@ one is missing:
      firebase-adminsdk-fbsvc@cham-hq.iam.gserviceaccount.com
      (Bach owns the sheet, so he is the one who can share it.)
 
-Only whole rows are ever appended. Nothing already in the sheet is edited,
-moved or deleted - Thuan's own tabs are never touched.
+Only whole rows are ever appended to those two tabs.
+
+It also keeps Thuan's "Overall" tab up to date: one row per fundraiser,
+with the cost in column D and the earnings in column F. Only those two
+cells are ever written (plus the name in column B when a new fundraiser
+gets the next empty row). The profit column is Thuan's formula, and so are
+the totals, so they follow by themselves. A row is matched by its name in
+column B; rows the site knows nothing about are left exactly as they are.
+Teaching spending goes on the "Teaching tools" row, as Thuan has it.
 """
 
 import argparse
@@ -47,6 +54,12 @@ TABS = {
                          "Received by", "Method", "Logged by", "Chạm HQ id"]),
 }
 METHODS = {"cash": "Cash", "transfer": "Bank transfer", "momo": "MoMo", "card": "Card"}
+
+OVERALL = "Overall "             # Thuan's tab name - it has a trailing space
+OVERALL_ROWS = range(2, 40)      # the fundraiser rows; row 40 is the totals
+TEACHING_ROW = "Teaching tools"  # where money spent on teaching goes
+RUNNING_ROW = "Running costs"    # money out that belongs to no fundraiser
+DONATION_ROW = "Donations"       # money in that belongs to no fundraiser
 
 
 def log(msg):
@@ -103,6 +116,74 @@ def not_ready(code, res):
     return None
 
 
+def overall_figures(expenses):
+    """{row name: [cost, earned]} worked out from every line on the site,
+    with the same rules as the Money tab."""
+    out = {}
+    for e in expenses:
+        amt = e.get("amount") or 0
+        kind = "in" if e.get("kind") == "in" else "out"
+        if kind == "out" and e.get("category") == "Teaching":
+            name = TEACHING_ROW
+        elif e.get("budgetLine"):
+            name = e["budgetLine"].strip()
+        else:
+            name = RUNNING_ROW if kind == "out" else DONATION_ROW
+        k = " ".join(name.split()).lower()           # "bake sale  #2" is "Bake sale #2"
+        f = out.setdefault(k, [name, 0, 0])
+        f[1 if kind == "out" else 2] += amt
+    return {name: [cost, earned] for name, cost, earned in out.values()}
+
+
+def update_overall(S, expenses, dry):
+    key = lambda n: " ".join(str(n).split()).lower()
+    rng = urllib.parse.quote(f"'{OVERALL}'!B{OVERALL_ROWS.start}:F{OVERALL_ROWS.stop - 1}")
+    code, res = S.call("GET", f"/values/{rng}?valueRenderOption=UNFORMATTED_VALUE")
+    if code != 200:
+        log(f"overall: could not read the tab ({code}): {json.dumps(res)[:160]}")
+        return
+    rows = res.get("values", [])
+    have, empty = {}, []
+    for i in range(len(OVERALL_ROWS)):
+        r = rows[i] if i < len(rows) else []
+        name = str(r[0]).strip() if r else ""
+        num = lambda j: (r[j] if len(r) > j and isinstance(r[j], (int, float)) else None)
+        if name:
+            have[key(name)] = (OVERALL_ROWS.start + i, num(2), num(4))
+        else:
+            empty.append(OVERALL_ROWS.start + i)
+
+    writes = []
+    for name, (cost, earned) in sorted(overall_figures(expenses).items()):
+        if key(name) in have:
+            row, c0, e0 = have[key(name)]
+            if c0 != cost:
+                writes.append({"range": f"'{OVERALL}'!D{row}", "values": [[cost]]})
+                log(f"overall: {name} cost {c0} -> {cost}")
+            if e0 != earned:
+                writes.append({"range": f"'{OVERALL}'!F{row}", "values": [[earned]]})
+                log(f"overall: {name} earnings {e0} -> {earned}")
+        elif empty:
+            row = empty.pop(0)
+            writes += [{"range": f"'{OVERALL}'!B{row}", "values": [[name]]},
+                       {"range": f"'{OVERALL}'!D{row}", "values": [[cost]]},
+                       {"range": f"'{OVERALL}'!F{row}", "values": [[earned]]}]
+            log(f"overall: new row {row} for {name}: cost {cost}, earnings {earned}")
+        else:
+            log(f"overall: no empty row left for {name}")
+    if not writes:
+        log("overall: already up to date")
+        return
+    if dry:
+        log(f"overall: dry run - {len(writes)} cell(s) not written")
+        return
+    code, res = S.call("POST", "/values:batchUpdate", {"valueInputOption": "RAW", "data": writes})
+    if code != 200:
+        log(f"overall: write failed ({code}): {json.dumps(res)[:160]}")
+    else:
+        log(f"overall: updated {len(writes)} cell(s)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -115,12 +196,26 @@ def main():
     db = firestore.Client(project=info["project_id"],
                           credentials=service_account.Credentials.from_service_account_info(info))
 
-    pending = []
-    for d in db.collection("expenses").where(filter=FieldFilter("status", "==", "new")).stream():
+    everything, pending = [], []
+    for d in db.collection("expenses").stream():
         e = d.to_dict() or {}
         e["_ref"] = d.reference
         e["_id"] = d.id
-        pending.append(e)
+        everything.append(e)
+        if e.get("status") == "new":
+            pending.append(e)
+
+    S = Sheets(info)
+    code, meta = S.call("GET", "?fields=sheets.properties.title")
+    reason = not_ready(code, meta) if code != 200 else None
+    if reason:
+        log("waiting: " + reason)
+        return
+    if code != 200:
+        log(f"could not read the sheet ({code}): {json.dumps(meta)[:200]}")
+        return
+
+    update_overall(S, everything, args.dry_run)
     if not pending:
         log("nothing new to copy")
         return
@@ -152,16 +247,6 @@ def main():
 
     if args.dry_run:
         log("dry run - nothing written")
-        return
-
-    S = Sheets(info)
-    code, meta = S.call("GET", "?fields=sheets.properties.title")
-    reason = not_ready(code, meta) if code != 200 else None
-    if reason:
-        log("waiting: " + reason)
-        return
-    if code != 200:
-        log(f"could not read the sheet ({code}): {json.dumps(meta)[:200]}")
         return
 
     have = {s["properties"]["title"] for s in meta.get("sheets", [])}

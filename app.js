@@ -99,6 +99,7 @@
   let PHOTOS = null;
   let LEDGER = null;
   let DRAFTS = null;
+  let ANNOUNCES = null;
 
   /* Live entries sit on top of what data.json already had, rather than
      replacing it, so the chat history from before any of this existed
@@ -159,12 +160,13 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
       if (s && pendingLog) setTimeout(openMoneySheet, 0);
     },
+    setAnnouncements(rows) { ANNOUNCES = rows; renderAnnounce(); },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
   };
@@ -418,7 +420,7 @@
     renderNotify();
     renderFab();
     renderMascot();
-    if (S.view === "updates") { renderDrafts(); renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "updates") { renderAnnounce(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
     if (S.view === "calendar") renderCalendar();
     if (S.view === "tasks") renderTasks();
     if (S.view === "money") renderMoney();
@@ -760,6 +762,69 @@
         ]),
         rows,
         el("div", { class: "adrow" }, [post, drop, msg])
+      ]));
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Announce - admins ping everyone's phone from here. The site only
+   * files the message; the sender on Peter's computer pushes it within
+   * seconds and writes back how many people got it.
+   * ------------------------------------------------------------------ */
+  function renderAnnounce() {
+    const box = $("announce");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && window.ChamLive && window.ChamLive.announce);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+
+    if (!box.childElementCount) {
+      const text = el("textarea", { class: "an-text", rows: "2", maxlength: "300",
+        placeholder: "@everyone just a quick check \u2026", "aria-label": "Announcement" });
+      const count = el("span", { class: "an-count", text: "0 / 300" });
+      const msg = el("span", { class: "ad-msg" });
+      const send = el("button", { class: "au-go", type: "button", text: "Send to everyone",
+        onclick: async () => {
+          const t = text.value.trim().replace(/\s+/g, " ");
+          msg.classList.remove("bad");
+          if (!t) { msg.textContent = "Type the message first."; msg.classList.add("bad"); return; }
+          if (!confirm("Send this to everyone's phone?\n\n\u201c" + t + "\u201d")) return;
+          send.disabled = true; send.textContent = "Sending\u2026";
+          try {
+            const me = SESSION.personKey;
+            await window.ChamLive.announce(t, me, PEOPLE[me] ? PEOPLE[me].name : me);
+            logActivity({ who: me, event: "announce", key: true, text: "\ud83d\udce3 " + t });
+            text.value = ""; count.textContent = "0 / 300";
+            msg.textContent = "Queued \u2014 phones buzz in a few seconds.";
+          } catch (e) {
+            msg.textContent = "Couldn\u2019t send: " + (e.code || e.message || e); msg.classList.add("bad");
+          } finally { send.disabled = false; send.textContent = "Send to everyone"; }
+        } });
+      text.addEventListener("input", () => { count.textContent = text.value.length + " / 300"; });
+      text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send.click(); });
+      box.append(
+        el("div", { class: "an-head" }, [
+          el("span", { class: "an-ic", "aria-hidden": "true", text: "\ud83d\udce3" }),
+          el("div", {}, [el("h3", { class: "an-h", text: "Announce" }),
+            el("p", { class: "an-sub", text: "Goes straight to the phone of everyone with notifications on. Admins only." })])
+        ]),
+        text,
+        el("div", { class: "an-row" }, [count, send]),
+        msg,
+        el("ul", { class: "an-list", id: "an-list" }));
+    }
+
+    const list = $("an-list");
+    list.replaceChildren();
+    (ANNOUNCES || []).forEach((a) => {
+      const state = a.status === "sent"
+        ? (a.sentTo ? "Sent to " + a.sentTo + " " + (a.sentTo === 1 ? "person" : "people") : "Sent \u2014 nobody else has notifications on yet")
+        : "Sending\u2026";
+      const when = a.at.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+      list.appendChild(el("li", { class: "an-item" + (a.status === "sent" ? " sent" : "") }, [
+        el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by) + " \u00b7 " + when }),
+        el("span", { class: "an-t", text: a.text }),
+        el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state })
       ]));
     });
   }

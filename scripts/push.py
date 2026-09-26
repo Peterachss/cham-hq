@@ -10,6 +10,8 @@ last one and tells the right people, once:
   money to log       -> finance, when new lines pile up for the sheet
   7am                -> anyone with something overdue, due today or tomorrow
   9pm                -> everyone: a round-up of what the club got done today
+  announcements      -> everyone: anything an admin typed into the Announce
+                        box that the always-on watcher (announce.py) missed
   Monday morning     -> everyone: Judy's weekly report - officer of the
                         week, who is most behind, what is due this week
 
@@ -473,6 +475,11 @@ def main():
     stuck(db, P, by_key, subs)
     finance(db, P, by_key, subs, meta)
     drafts(db, P, by_key, subs)
+    try:
+        import announce
+        announce.send_pending(db, key, args.dry_run, say=log)
+    except Exception as e:
+        log(f"  announcements: {type(e).__name__}: {e}")
     if now.hour in MORNING:
         morning(db, P, by_key, subs, meta, today)
         if today.weekday() == 0 or args.weekly_now:
