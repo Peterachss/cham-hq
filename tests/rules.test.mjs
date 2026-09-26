@@ -39,6 +39,7 @@ async function seed() {
     await setDoc(doc(db, "announcements", "a-1"), { text: "hi", by: "peter", createdBy: PETER, status: "pending" });
     await setDoc(doc(db, "activities", "act"), { name: "Bake sale #2", type: "fundraiser", checks: { money: true } });
     await setDoc(doc(db, "sponsors", "sp"), { name: "Goofoo", stage: "todo" });
+    await setDoc(doc(db, "site", "data"), { PEOPLE: {} });
     await setDoc(doc(db, "sales", "s-open"), { name: "Ice cream sale", open: true, items: [{ id: "v", name: "Vanilla", price: 30000 }] });
     await setDoc(doc(db, "sales", "s-shut"), { name: "Bake sale", open: false, items: [{ id: "c", name: "Cookie", price: 15000 }] });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
@@ -197,6 +198,10 @@ const cases = [
   ["member writes meeting notes",            true,  () => addDoc(collection(as(THUAN), "meetings"), { date: "2026-09-28", title: "Weekly", notes: "x" })],
   ["stranger cannot read meeting notes",     false, () => getDocs(collection(anon(), "meetings"))],
   ["nothing is public: signed-out read fails", false, () => getDoc(doc(anon(), "public/report"))],
+  ["member reads the site data",             true,  () => getDoc(doc(as(EMILY), "site/data"))],
+  ["signed out cannot read the site data",   false, () => getDoc(doc(anon(), "site/data"))],
+  ["stranger cannot read the site data",     false, () => getDoc(doc(as(STRANGER), "site/data"))],
+  ["nobody writes the site data from a page",false, () => setDoc(doc(as(PETER), "site/data"), { PEOPLE: {} })],
 ];
 
 let failed = 0;

@@ -5,17 +5,13 @@
    * data — everything below comes from the ISHCMC Chạm Nonprofit group
    * chat export of 25 Sep 2026. Nothing is invented.
    * ------------------------------------------------------------------ */
+  /* Members only: nothing is on the page until a member signs in. live.js
+     checks the account, reads the base data from the members-only
+     database and hands it over here. Signed out, this simply waits. */
   let TODAY, PEOPLE, DAYS, TASKS, EVENTS, UNDATED, MONEY, LINKS;
-  try {
-    const res = await fetch("data.json", { cache: "no-cache" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    ({ TODAY, PEOPLE, DAYS, TASKS, EVENTS, UNDATED, MONEY, LINKS } = await res.json());
-  } catch (err) {
-    console.error("Chạm HQ: could not load data.json", err);
-    const b = document.getElementById("boot-error");
-    if (b) b.hidden = false;
-    return;
-  }
+  const boot = window.__chamData || await new Promise((res) =>
+    window.addEventListener("cham-data", (e) => res(e.detail), { once: true }));
+  ({ TODAY, PEOPLE, DAYS, TASKS, EVENTS, UNDATED, MONEY, LINKS } = boot);
 
   /* TODAY used to be typed into data.json by hand, which meant that the
      moment somebody forgot, every "overdue" and "3 days ago" on the page

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=46" />
+<link rel="stylesheet" href="styles.css?v=47" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -17,7 +17,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1613" />
 <meta name="robots" content="noindex, nofollow" />
 </head>
-<body>
+<body class="locked">
 <header class="top">
   <div class="top-in">
     <div class="brandrow">
@@ -44,6 +44,15 @@
     </nav>
   </div>
 </header>
+
+<!-- what anyone who is not signed in sees: this, and the sign-in box above -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <span class="gate-ic" aria-hidden="true">🔒</span>
+    <h2>Members only</h2>
+    <p>This is the Chạm team&rsquo;s workspace. Sign in above with your Chạm account.</p>
+  </div>
+</div>
 
 <div class="wrap">
   <div id="notify-bar" hidden></div>
@@ -160,7 +169,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=46" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=47" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -181,8 +190,8 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=46"></script>
-<script src="app.js?v=46"></script>
-<script type="module" src="live.js?v=46"></script>
+<script src="firebase-config.js?v=47"></script>
+<script src="app.js?v=47"></script>
+<script type="module" src="live.js?v=47"></script>
 </body>
 </html>

@@ -1196,3 +1196,17 @@
   .mt-row .mt-w { flex: 0 0 130px; }
   .mt-row .mt-d { flex: 0 0 150px; }
   @media (max-width: 620px) { .mt-row { flex-wrap: wrap; } .mt-row .mt-t { flex-basis: 100%; } }
+
+  /* ------------------------------------------------------------------ *
+   * members only: signed out, the page is the header's sign-in box and
+   * this card - nothing else is even drawn
+   * ------------------------------------------------------------------ */
+  body.locked .wrap, body.locked .tabs, body.locked .stamp, body.locked #log-fab,
+  body.locked .install, body.locked .sheet, body.locked .hclock { display: none !important; }
+  body:not(.locked) #gate { display: none; }
+  .gate { max-width: 1060px; margin: 0 auto; padding: 40px 18px; }
+  .gate-card { max-width: 440px; margin: 0 auto; text-align: center; padding: 28px 22px; border-radius: 18px;
+    background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .gate-ic { font-size: 30px; }
+  .gate-card h2 { margin: 8px 0 6px; font-family: var(--serif); font-size: 24px; }
+  .gate-card p { margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.5; }

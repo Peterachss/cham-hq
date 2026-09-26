@@ -43,11 +43,13 @@ if (!CONFIGURED) {
     return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
   }
 
-  // app.js loads data.json before it publishes the bridge, so wait for it.
-  await (async function whenReady() {
-    for (let i = 0; i < 200 && !window.ChamHQ; i++) await new Promise((r) => setTimeout(r, 25));
-  })();
-  if (!window.ChamHQ) { console.error("Chạm HQ: page never finished loading, sign-in disabled"); }
+  /* app.js builds the page only once it has the data, which this file
+     fetches after sign-in - so wait for its bridge at that point. */
+  async function pageReady() {
+    for (let i = 0; i < 400 && !window.ChamHQ; i++) await new Promise((r) => setTimeout(r, 25));
+    return Boolean(window.ChamHQ);
+  }
+  let wasIn = false;
 
   const app  = initializeApp(CFG);
   const auth = getAuth(app);
@@ -193,18 +195,9 @@ if (!CONFIGURED) {
     if (unsubMeetings) { unsubMeetings(); unsubMeetings = null; }
 
     if (!user) {
-      window.ChamHQ.setSession(null);
-      window.ChamHQ.setTasks(null);       // fall back to data.json
-      window.ChamHQ.setUpdates(null);
-      window.ChamHQ.setPhotos(null);
-      window.ChamHQ.setMoney(null);
-      window.ChamHQ.setDrafts(null);
-      window.ChamHQ.setAnnouncements(null);
-      window.ChamHQ.setSales(null);
-      window.ChamHQ.setOrders(null);
-      window.ChamHQ.setActivities(null);
-      window.ChamHQ.setSponsors(null);
-      window.ChamHQ.setMeetings(null);
+      // Signing out wipes the page: reload, so nothing a member saw stays in memory.
+      if (wasIn) { location.reload(); return; }
+      document.body.classList.add("locked");
       showSignedOut();
       return;
     }
@@ -228,6 +221,23 @@ if (!CONFIGURED) {
         : "That account is not on the Chạm list yet. Ask Peter or Bach to add it.");
       return;
     }
+
+    // The base data: members only, so it can only be read now.
+    if (!window.__chamData) {
+      try {
+        const s = await getDoc(doc(db, "site", "data"));
+        if (!s.exists()) throw new Error("site/data is missing");
+        window.__chamData = s.data();
+        window.dispatchEvent(new CustomEvent("cham-data", { detail: window.__chamData }));
+      } catch (err) {
+        console.error("Chạm HQ: could not load the site data", err);
+        showSignedOut("Signed in, but the Chạm data would not load (" + (err.code || err.message) + "). Reload to try again.");
+        return;
+      }
+    }
+    if (!(await pageReady())) { showSignedOut("The page did not finish loading. Reload to try again."); return; }
+    wasIn = true;
+    document.body.classList.remove("locked");
 
     const session = {
       email: user.email.toLowerCase(),

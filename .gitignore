@@ -8,3 +8,7 @@ firebase-key.json
 # Python leaves these behind; never commit them
 __pycache__/
 *.pyc
+
+# the site's base data is members-only: it lives in Firestore (site/data),
+# uploaded with scripts/publish_data.py - never in this public repo
+data.json
