@@ -48,9 +48,12 @@ the pencil, commit) and the site updates within a minute.
 - **You never set `"TODAY"` any more.** The page reads the real date off the device.
   The date in `data.json` only stamps *"Chat read to ..."* in the corner, so move it
   when you have read further up the chat, and otherwise leave it alone.
-- If you change `app.js`, `styles.css` or `index.html`, bump `CACHE` in `sw.js`
-  (`cham-hq-v7` → `cham-hq-v8`). Not strictly required - the service worker asks the
-  network first now - but it clears out the old copies cleanly.
+- If you change `app.js`, `styles.css` or `index.html`, bump **two** things: `CACHE` in
+  `sw.js`, and the `?v=` on the script and stylesheet tags in `index.html` (they must
+  match the list in `sw.js`). The `?v=` is the one that matters - it makes every browser
+  fetch a genuinely new address, which no cache can answer from memory. Without it,
+  phones can end up running new HTML against old JavaScript, where half the buttons
+  are missing and nothing explains why.
 
 ### What goes where in `data.json`
 
