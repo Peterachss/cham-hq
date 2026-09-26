@@ -68,7 +68,7 @@ if (!CONFIGURED) {
   };
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
-  let unsubAnn = null, unsubSales = null, unsubOrders = null;
+  let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -188,6 +188,7 @@ if (!CONFIGURED) {
     if (unsubAnn) { unsubAnn(); unsubAnn = null; }
     if (unsubSales) { unsubSales(); unsubSales = null; }
     if (unsubOrders) { unsubOrders(); unsubOrders = null; }
+    if (unsubActs) { unsubActs(); unsubActs = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
@@ -199,6 +200,7 @@ if (!CONFIGURED) {
       window.ChamHQ.setAnnouncements(null);
       window.ChamHQ.setSales(null);
       window.ChamHQ.setOrders(null);
+      window.ChamHQ.setActivities(null);
       showSignedOut();
       return;
     }
@@ -349,7 +351,7 @@ if (!CONFIGURED) {
         const rows = [];
         qs.forEach((d) => {
           const v = d.data();
-          rows.push({ id: d.id, name: v.name || "Sale", date: v.date || null, pickup: v.pickup || "", note: v.note || "",
+          rows.push({ id: d.id, name: v.name || "Sale", date: v.date || null, pickup: v.pickup || "", note: v.note || "", allergens: v.allergens || "",
             items: Array.isArray(v.items) ? v.items : [], open: v.open === true,
             logged: typeof v.logged === "number" ? v.logged : 0 });
         });
@@ -369,6 +371,20 @@ if (!CONFIGURED) {
         window.ChamHQ.setOrders(rows);
       },
       (err) => { console.error("Chạm HQ: lost the orders", err); window.ChamHQ.setOrders(null); });
+
+    // what Chạm has done, and the evidence for it
+    unsubActs = onSnapshot(collection(db, "activities"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, name: v.name || "Activity", date: v.date || null, type: v.type === "program" ? "program" : "fundraiser",
+            reach: typeof v.reach === "number" ? v.reach : null, sessions: typeof v.sessions === "number" ? v.sessions : null,
+            checks: v.checks && typeof v.checks === "object" ? v.checks : {}, note: v.note || "" });
+        });
+        window.ChamHQ.setActivities(rows);
+      },
+      (err) => { console.error("Chạm HQ: lost the activities", err); window.ChamHQ.setActivities(null); });
 
     // tonight's chat wrap, for the two people who approve it
     if (session.admin) {
@@ -500,10 +516,15 @@ if (!CONFIGURED) {
     },
     async createSale(s) {
       const ref = await addDoc(collection(db, "sales"), {
-        name: s.name, date: s.date || null, pickup: s.pickup || "", note: s.note || "",
+        name: s.name, date: s.date || null, pickup: s.pickup || "", note: s.note || "", allergens: s.allergens || "",
         items: s.items, open: true, logged: 0, createdByKey: s.by || "", createdAt: serverTimestamp()
       });
       return ref.id;
+    },
+    async setCheck(id, key, on) { await updateDoc(doc(db, "activities", id), { ["checks." + key]: on, updatedAt: serverTimestamp() }); },
+    async addActivity(a) {
+      await addDoc(collection(db, "activities"), { name: a.name, date: a.date || null, type: a.type, reach: a.reach, sessions: a.sessions,
+        checks: {}, createdAt: serverTimestamp() });
     },
     async setSaleOpen(id, open) { await updateDoc(doc(db, "sales", id), { open, updatedAt: serverTimestamp() }); },
     async setSaleLogged(id, logged) { await updateDoc(doc(db, "sales", id), { logged, updatedAt: serverTimestamp() }); },

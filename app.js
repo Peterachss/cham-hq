@@ -118,7 +118,7 @@
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
-  let SALES = null, ORDERS = null;
+  let SALES = null, ORDERS = null, ACTS = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -160,6 +160,7 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setActivities(rows) { ACTS = Array.isArray(rows) ? rows : null; if (S.view === "tracker") renderImpact(); },
     setSales(rows) { SALES = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
     setOrders(rows) { ORDERS = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
     setPhotos(rows) {
@@ -483,7 +484,7 @@
     if (S.view === "tasks") renderTasks();
     if (S.view === "money") { renderSales(); renderMoney(); }
     if (S.view === "photos") renderPhotos();
-    if (S.view === "tracker") renderTracker();
+    if (S.view === "tracker") { renderImpact(); renderTracker(); }
     renderAdmin();
   }
 
@@ -2491,6 +2492,90 @@
     return (sale.items || []).reduce((a, it) => a + qtyOf(o.items[it.id]) * (it.price || 0), 0);
   }
 
+  /* ------------------------------------------------------------------ *
+   * Impact, and the evidence behind it
+   *
+   * The roadmap's "what we should track across every phase": programs
+   * completed, people reached (a count, never names), fundraisers run,
+   * money raised and used - and for each activity, whether the evidence
+   * a sponsor would ask for actually exists.
+   * ------------------------------------------------------------------ */
+  const EVIDENCE = [["plan", "Plan"], ["money", "Money records"], ["photos", "Photos / video"],
+                    ["permission", "Permission"], ["feedback", "Feedback"], ["recap", "Recap / report"]];
+  function renderImpact() {
+    const box = $("impact");
+    if (!box) return;
+    const on = Boolean(SESSION && window.ChamLive && ACTS);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    const admin = Boolean(SESSION.admin);
+    const acts = ACTS.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const programs = acts.filter((a) => a.type === "program");
+    const sum = (k) => programs.reduce((n, a) => n + (a[k] || 0), 0);
+    const sm = LEDGER && LEDGER.length ? moneySummary(LEDGER) : null;
+
+    const tiles = el("div", { class: "im-tiles" }, [
+      ["Programs run", String(programs.length)],
+      ["Kids reached", String(sum("reach"))],
+      ["Teaching sessions", String(sum("sessions"))],
+      ["Fundraisers done", String(acts.filter((a) => a.type === "fundraiser").length)],
+      ["Raised after costs", sm ? shortVnd(sm.raised) : "\u2014"],
+      ["Used for programs", sm ? shortVnd(sm.programs) : "\u2014"]
+    ].map(([k, v]) => el("div", { class: "im-tile" }, [el("span", { class: "im-n", text: v }), el("span", { class: "im-k", text: k })])));
+
+    const done = acts.reduce((n, a) => n + EVIDENCE.filter(([k]) => a.checks[k]).length, 0);
+    const total = acts.length * EVIDENCE.length;
+    const list = el("div", { class: "im-list" });
+    acts.forEach((a) => {
+      const got = EVIDENCE.filter(([k]) => a.checks[k]).length;
+      list.appendChild(el("div", { class: "im-row" }, [
+        el("div", { class: "im-name" }, [
+          el("b", { text: a.name }),
+          el("span", { text: [a.date ? pretty(a.date) : "", a.type === "program" ? "Program" : "Fundraiser",
+            a.reach ? a.reach + " kids" : ""].filter(Boolean).join(" \u00b7 ") })
+        ]),
+        el("div", { class: "im-checks" }, EVIDENCE.map(([k, label]) => el("button", {
+          class: "im-chk" + (a.checks[k] ? " on" : ""), type: "button", disabled: !admin, "aria-pressed": String(Boolean(a.checks[k])),
+          title: admin ? "Tap to mark " + (a.checks[k] ? "missing" : "done") : (a.checks[k] ? "In the evidence folder" : "Missing"),
+          text: (a.checks[k] ? "\u2713 " : "") + label,
+          onclick: (e) => { e.currentTarget.disabled = true; window.ChamLive.setCheck(a.id, k, !a.checks[k]).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message))); }
+        }))),
+        el("span", { class: "im-score" + (got === EVIDENCE.length ? " full" : ""), text: got + "/" + EVIDENCE.length })
+      ]));
+    });
+
+    const add = admin ? (() => {
+      const nm = el("input", { class: "ad-in wide", type: "text", maxlength: "60", placeholder: "Activity, e.g. Halloween sale", "aria-label": "Activity" });
+      const dt = el("input", { class: "ad-in", type: "date", "aria-label": "Date" });
+      const ty = el("select", { class: "ad-in", "aria-label": "Type" }, [el("option", { value: "fundraiser", text: "Fundraiser" }), el("option", { value: "program", text: "Program" })]);
+      const kids = el("input", { class: "ad-in", type: "number", min: "0", placeholder: "Kids (programs)", "aria-label": "Kids reached" });
+      const go = el("button", { class: "act", type: "button", text: "Add",
+        onclick: async () => {
+          if (!nm.value.trim()) { nm.focus(); return; }
+          go.disabled = true;
+          try {
+            await window.ChamLive.addActivity({ name: nm.value.trim(), date: dt.value || null, type: ty.value,
+              reach: ty.value === "program" && kids.value ? Number(kids.value) : null, sessions: null });
+            nm.value = ""; dt.value = ""; kids.value = "";
+          } catch (err) { toast("Didn\u2019t save. " + (err.code || err.message)); }
+          go.disabled = false;
+        } });
+      return el("details", { class: "im-add" }, [el("summary", { text: "+ Add an activity" }), el("div", { class: "sf-row" }, [nm, dt, ty, kids, go])]);
+    })() : null;
+
+    box.replaceChildren(
+      el("div", { class: "sl-headrow" }, [el("div", {}, [
+        el("h3", { class: "an-h", text: "Impact" }),
+        el("p", { class: "an-sub", text: "What Ch\u1ea1m has actually done, and whether the proof a sponsor would ask for exists. Counts only \u2014 no names." })
+      ])]),
+      tiles,
+      el("div", { class: "im-evhead" }, [
+        el("span", { class: "sf-k", text: "Evidence" }),
+        el("span", { class: "im-total", text: done + " of " + total + " pieces in place" + (admin ? " \u00b7 tap one to tick it" : "") })
+      ]),
+      list, add);
+  }
+
   function renderSales() {
     const box = $("sales");
     if (!box) return;
@@ -2524,6 +2609,7 @@
     const date = el("input", { class: "ad-in", type: "date", "aria-label": "Sale day" });
     const pickup = el("input", { class: "ad-in wide", type: "text", maxlength: "80", placeholder: "Pickup, e.g. Break time, outside the canteen", "aria-label": "Pickup" });
     const note = el("input", { class: "ad-in wide", type: "text", maxlength: "200", placeholder: "Note for buyers (optional), e.g. transfer to \u2026", "aria-label": "Note for buyers" });
+    const allergens = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "Allergens, e.g. wheat, dairy, egg (food sales)", "aria-label": "Allergens" });
     const rows = el("div", { class: "sf-items" });
     const addRow = () => rows.appendChild(el("div", { class: "sf-item" }, [
       el("input", { class: "ad-in wide sf-n", type: "text", maxlength: "40", placeholder: "Item, e.g. Vanilla", "aria-label": "Item" }),
@@ -2544,8 +2630,8 @@
       make.disabled = true; make.textContent = "Creating\u2026";
       try {
         await window.ChamLive.createSale({ name: name.value.trim(), date: date.value || null, pickup: pickup.value.trim(),
-          note: note.value.trim(), items, by: SESSION.personKey });
-        [name, date, pickup, note].forEach((i) => { i.value = ""; });
+          note: note.value.trim(), allergens: allergens.value.trim(), items, by: SESSION.personKey });
+        [name, date, pickup, note, allergens].forEach((i) => { i.value = ""; });
         rows.replaceChildren(); addRow(); addRow();
         form.hidden = true; msg.textContent = "";
         toast("Sale created \u2014 copy its link below");
@@ -2553,10 +2639,21 @@
       finally { make.disabled = false; make.textContent = "Create sale & get link"; }
     });
     const form = el("div", { class: "sale-form", id: "sale-form", hidden: true }, [
-      el("div", { class: "sf-row" }, [name, date]), pickup, note,
+      el("div", { class: "sf-row" }, [name, date]), pickup, note, allergens,
       el("span", { class: "sf-k", text: "Items and prices" }), rows,
       el("div", { class: "sf-row" }, [
-        el("button", { class: "act ghost", type: "button", text: "+ Another item", onclick: () => { if (rows.childElementCount < 12) addRow(); } }),
+        el("div", { class: "sf-row" }, [
+          el("button", { class: "act ghost", type: "button", text: "+ Another item", onclick: () => { if (rows.childElementCount < 12) addRow(); } }),
+          /* merch: turn the first item into one row per size, same price */
+          el("button", { class: "act ghost", type: "button", text: "Split into sizes S\u2013XL", title: "For shirts: fill in the first item, then tap this",
+            onclick: () => {
+              const first = rows.querySelector(".sf-item");
+              const n = first.querySelector(".sf-n").value.trim(), pr = first.querySelector(".sf-p").value.trim();
+              if (!n) { msg.textContent = "Type the first item (e.g. Chạm tee) and its price first."; msg.classList.add("bad"); return; }
+              rows.replaceChildren();
+              ["S", "M", "L", "XL"].forEach((sz) => { addRow(); const r = rows.lastChild; r.querySelector(".sf-n").value = n + " (" + sz + ")"; r.querySelector(".sf-p").value = pr; });
+              msg.textContent = ""; msg.classList.remove("bad");
+            } })]),
         make]),
       msg
     ]);
@@ -2587,7 +2684,8 @@
     const head = el("div", { class: "sl-head" }, [
       el("div", {}, [
         el("b", { class: "sl-name", text: s.name }),
-        el("span", { class: "sl-meta", text: [s.date ? pretty(s.date) : "", s.pickup].filter(Boolean).join(" \u00b7 ") })
+        el("span", { class: "sl-meta", text: [s.date ? pretty(s.date) : "", s.pickup].filter(Boolean).join(" \u00b7 ") }),
+        s.allergens ? el("span", { class: "sl-meta", text: "Allergens: " + s.allergens }) : null
       ]),
       el("span", { class: "sl-badge" + (s.open ? " open" : ""), text: s.open ? "Taking orders" : "Closed" })
     ]);

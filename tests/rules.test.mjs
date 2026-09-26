@@ -177,6 +177,12 @@ const cases = [
   ["buyer cannot tick their own order paid", false, () => updateDoc(doc(anon(), "orders/o-1"), { paid: true })],
   ["member cannot delete an order",          false, () => deleteDoc(doc(as(EMILY), "orders/o-1"))],
   ["admin deletes a junk order",             true,  () => deleteDoc(doc(as(BACH), "orders/o-1"))],
+
+  // ---------------------------------------------------------------- impact & evidence
+  ["member reads the activities",            true,  () => getDocs(collection(as(EMILY), "activities"))],
+  ["stranger cannot read the activities",    false, () => getDocs(collection(anon(), "activities"))],
+  ["admin ticks off evidence",               true,  () => setDoc(doc(as(BACH), "activities/a1"), { name: "Mai Tâm", checks: { plan: true } })],
+  ["member cannot tick off evidence",        false, () => setDoc(doc(as(EMILY), "activities/a1"), { name: "Mai Tâm", checks: { plan: true } })],
 ];
 
 let failed = 0;

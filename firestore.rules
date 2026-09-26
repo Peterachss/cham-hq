@@ -119,6 +119,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // What Chạm has done, and how complete the evidence for it is - the
+    // roadmap's "what we should track" list. Counts only, never names.
+    match /activities/{actId} {
+      allow read:  if isMember();
+      allow write: if isAdmin();
+    }
+
     // A sale people can pre-order from. Its name, items, prices and pickup
     // details are public - the order page has to show them to buyers who
     // have no account. Only admins set one up, open it or close it.

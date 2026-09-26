@@ -131,7 +131,8 @@ function drawForm() {
         sale.date ? el("span", { text: pretty(sale.date) }) : null,
         sale.pickup ? el("span", { text: "Pickup: " + sale.pickup }) : null
       ]),
-      sale.note ? el("p", { class: "op-info", text: sale.note }) : null
+      sale.note ? el("p", { class: "op-info", text: sale.note }) : null,
+      sale.allergens ? el("p", { class: "op-allergens", text: "\u26a0 Contains: " + sale.allergens + ". Ask us if you\u2019re not sure." }) : null
     ]),
     el("section", { class: "op-card" }, [el("h3", { class: "op-h", text: "What would you like?" })].concat(rows)),
     el("section", { class: "op-card" }, [
