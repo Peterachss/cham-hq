@@ -68,7 +68,7 @@ if (!CONFIGURED) {
   };
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
-  let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null;
+  let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -189,6 +189,8 @@ if (!CONFIGURED) {
     if (unsubSales) { unsubSales(); unsubSales = null; }
     if (unsubOrders) { unsubOrders(); unsubOrders = null; }
     if (unsubActs) { unsubActs(); unsubActs = null; }
+    if (unsubSponsors) { unsubSponsors(); unsubSponsors = null; }
+    if (unsubMeetings) { unsubMeetings(); unsubMeetings = null; }
 
     if (!user) {
       window.ChamHQ.setSession(null);
@@ -201,6 +203,8 @@ if (!CONFIGURED) {
       window.ChamHQ.setSales(null);
       window.ChamHQ.setOrders(null);
       window.ChamHQ.setActivities(null);
+      window.ChamHQ.setSponsors(null);
+      window.ChamHQ.setMeetings(null);
       showSignedOut();
       return;
     }
@@ -380,11 +384,36 @@ if (!CONFIGURED) {
           const v = d.data();
           rows.push({ id: d.id, name: v.name || "Activity", date: v.date || null, type: v.type === "program" ? "program" : "fundraiser",
             reach: typeof v.reach === "number" ? v.reach : null, sessions: typeof v.sessions === "number" ? v.sessions : null,
-            checks: v.checks && typeof v.checks === "object" ? v.checks : {}, note: v.note || "" });
+            checks: v.checks && typeof v.checks === "object" ? v.checks : {}, note: v.note || "",
+            review: v.review && typeof v.review === "object" ? v.review : null });
         });
         window.ChamHQ.setActivities(rows);
       },
       (err) => { console.error("Chạm HQ: lost the activities", err); window.ChamHQ.setActivities(null); });
+
+    unsubSponsors = onSnapshot(collection(db, "sponsors"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, name: v.name || "", contact: v.contact || "", owner: v.owner || "", stage: v.stage || "todo",
+            ask: v.ask || "", amount: typeof v.amount === "number" ? v.amount : 0, next: v.next || null,
+            log: Array.isArray(v.log) ? v.log : [] });
+        });
+        window.ChamHQ.setSponsors(rows);
+      },
+      (err) => { console.error("Chạm HQ: lost the sponsors", err); window.ChamHQ.setSponsors(null); });
+    unsubMeetings = onSnapshot(collection(db, "meetings"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, date: v.date || "", title: v.title || "Meeting", people: Array.isArray(v.people) ? v.people : [],
+            notes: v.notes || "", decisions: Array.isArray(v.decisions) ? v.decisions : [] });
+        });
+        window.ChamHQ.setMeetings(rows);
+      },
+      (err) => { console.error("Chạm HQ: lost the meetings", err); window.ChamHQ.setMeetings(null); });
 
     // tonight's chat wrap, for the two people who approve it
     if (session.admin) {
@@ -521,6 +550,16 @@ if (!CONFIGURED) {
       });
       return ref.id;
     },
+    async saveReview(id, review) { await updateDoc(doc(db, "activities", id), { review, reviewedAt: serverTimestamp() }); },
+    async addSponsor(s) { await addDoc(collection(db, "sponsors"), { ...s, log: [], createdAt: serverTimestamp() }); },
+    async updateSponsor(id, s) { await setDoc(doc(db, "sponsors", id), { ...s, updatedAt: serverTimestamp() }, { merge: true }); },
+    async deleteSponsor(id) { await deleteDoc(doc(db, "sponsors", id)); },
+    async saveMeeting(id, m) {
+      if (id) { await setDoc(doc(db, "meetings", id), { ...m, updatedAt: serverTimestamp() }, { merge: true }); return id; }
+      const ref = await addDoc(collection(db, "meetings"), { ...m, createdAt: serverTimestamp() });
+      return ref.id;
+    },
+    async deleteMeeting(id) { await deleteDoc(doc(db, "meetings", id)); },
     async setCheck(id, key, on) { await updateDoc(doc(db, "activities", id), { ["checks." + key]: on, updatedAt: serverTimestamp() }); },
     async addActivity(a) {
       await addDoc(collection(db, "activities"), { name: a.name, date: a.date || null, type: a.type, reach: a.reach, sessions: a.sessions,

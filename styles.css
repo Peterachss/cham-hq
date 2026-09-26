@@ -1148,3 +1148,51 @@
   }
   /* allergens on the order page */
   .op-allergens { margin: 0; font-size: 13.5px; color: var(--marigold); }
+
+  /* after-event review */
+  .rv { grid-column: 1 / -1; }
+  .rv summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .rv.due summary { color: var(--marigold); font-weight: 600; }
+  .rv.done summary { color: var(--jade); }
+  .rv[open] { display: flex; flex-direction: column; gap: 6px; }
+  .rv-a { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+  .rv-in { min-height: 44px; font-size: 14px; }
+  .im-tile.warn .im-n { color: var(--clay); }
+
+  /* sponsors */
+  .sp-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+  .sp-add { margin: 0 0 14px; }
+  .sp-add summary { cursor: pointer; font-weight: 600; color: var(--jade); padding: 6px 0; }
+  .sp-add .sale-form { margin-top: 8px; }
+  .sp-stage { margin: 16px 0 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  .sp-stage span { color: var(--ink-2); }
+  .sp-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 13px; margin: 0 0 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+  .sp-card.late { border-color: color-mix(in srgb, var(--clay) 55%, var(--line)); }
+  .sp-card.agreed { border-color: color-mix(in srgb, var(--jade) 55%, var(--line)); }
+  .sp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .sp-who { display: flex; flex-direction: column; min-width: 0; }
+  .sp-who b { font-size: 15px; }
+  .sp-who span { font-size: 12.5px; color: var(--muted); }
+  .sp-owner { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+  .sp-row { justify-content: flex-start; }
+  .sp-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .sp-lbl.late { color: var(--clay); font-weight: 600; }
+  .sp-sel { min-width: 130px; }
+  .sp-amt { width: 140px; }
+  .sp-log summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .sp-log ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }
+  @media (max-width: 780px) { .sp-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+  /* meetings */
+  .meetings { margin: 0 0 18px; padding: 14px 16px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+  .mt-card { display: flex; flex-direction: column; gap: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line-soft); }
+  .mt-card.soon { border-color: color-mix(in srgb, var(--jade) 50%, var(--line)); }
+  .mt-notes { margin: 0; font-size: 13.5px; color: var(--ink-2); white-space: pre-wrap; }
+  .mt-decs { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .mt-dec { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 13.5px; }
+  .mt-dtext { flex: 1 1 200px; }
+  .mt-job { font-size: 12px; color: var(--jade); }
+  .mt-people { margin: 0; }
+  .mt-row .mt-w { flex: 0 0 130px; }
+  .mt-row .mt-d { flex: 0 0 150px; }
+  @media (max-width: 620px) { .mt-row { flex-wrap: wrap; } .mt-row .mt-t { flex-basis: 100%; } }

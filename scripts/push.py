@@ -11,6 +11,8 @@ last one and tells the right people, once:
   7am                -> anyone with something overdue, due today or tomorrow
   9pm                -> everyone: a round-up of what the club got done today
   new pre-orders     -> the admins: how many came in, for which sale
+  review due         -> the admins, once, the day after an activity with no review
+  sponsor follow-up  -> whoever owns that sponsor, on the day it is due
   announcements      -> everyone: anything an admin typed into the Announce
                         box that the always-on watcher (announce.py) missed
   Monday morning     -> everyone: Judy's weekly report - officer of the
@@ -263,6 +265,45 @@ def orders(db, P, by_key, subs):
             d.reference.update({"pushed": True})
 
 
+def reviews(db, P, by_key, subs, today):
+    """An activity whose date has passed with no after-event review: tell the admins, once."""
+    admins = [m for m in by_key.values() if m["admin"]]
+    for d in db.collection("activities").stream():
+        a = d.to_dict() or {}
+        try:
+            when = dt.date.fromisoformat(a["date"]) if a.get("date") else None
+        except ValueError:
+            when = None
+        # only recent ones - nobody needs a nudge about something months ago
+        if not when or when >= today or when < today - dt.timedelta(days=14) or a.get("review") or a.get("reviewPinged"):
+            continue
+        body = f"How did {a.get('name', 'it')} go? Four quick questions on the Tracker tab."
+        log(f"  review due: {a.get('name')}")
+        for m in admins:
+            if m["key"] in subs:
+                P.send(subs[m["key"]], "📝 Time for the review", body, url="./#tracker", tag="review-" + d.id)
+        if not P.dry:
+            d.reference.update({"reviewPinged": True})
+
+
+def sponsor_followups(db, P, by_key, subs, today):
+    iso = today.isoformat()
+    admins = [m for m in by_key.values() if m["admin"]]
+    for d in db.collection("sponsors").stream():
+        s = d.to_dict() or {}
+        if s.get("stage") in ("agreed", "no") or not s.get("next") or s["next"] > iso or s.get("pingedOn") == iso:
+            continue
+        owner = s.get("owner")
+        who = [by_key[owner]] if owner in by_key else admins
+        body = f"Follow up with {s.get('name')}" + (f" — {short(s['ask'], 80)}" if s.get("ask") else "") + (" (overdue)" if s["next"] < iso else "")
+        log(f"  sponsor follow-up -> {owner or 'admins'}: {s.get('name')}")
+        for m in who:
+            if m["key"] in subs:
+                P.send(subs[m["key"]], "🤝 Sponsor follow-up", body, url="./#sponsors", tag="sponsor-" + d.id)
+        if not P.dry:
+            d.reference.update({"pingedOn": iso})
+
+
 def pretty(iso):
     try:
         d = dt.date.fromisoformat(iso)
@@ -501,6 +542,8 @@ def main():
     finance(db, P, by_key, subs, meta)
     drafts(db, P, by_key, subs)
     orders(db, P, by_key, subs)
+    reviews(db, P, by_key, subs, today)
+    sponsor_followups(db, P, by_key, subs, today)
     try:
         import announce
         announce.send_pending(db, key, args.dry_run, say=log)

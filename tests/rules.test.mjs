@@ -37,6 +37,8 @@ async function seed() {
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
     await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
     await setDoc(doc(db, "announcements", "a-1"), { text: "hi", by: "peter", createdBy: PETER, status: "pending" });
+    await setDoc(doc(db, "activities", "act"), { name: "Bake sale #2", type: "fundraiser", checks: { money: true } });
+    await setDoc(doc(db, "sponsors", "sp"), { name: "Goofoo", stage: "todo" });
     await setDoc(doc(db, "sales", "s-open"), { name: "Ice cream sale", open: true, items: [{ id: "v", name: "Vanilla", price: 30000 }] });
     await setDoc(doc(db, "sales", "s-shut"), { name: "Bake sale", open: false, items: [{ id: "c", name: "Cookie", price: 15000 }] });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
@@ -183,6 +185,18 @@ const cases = [
   ["stranger cannot read the activities",    false, () => getDocs(collection(anon(), "activities"))],
   ["admin ticks off evidence",               true,  () => setDoc(doc(as(BACH), "activities/a1"), { name: "Mai Tâm", checks: { plan: true } })],
   ["member cannot tick off evidence",        false, () => setDoc(doc(as(EMILY), "activities/a1"), { name: "Mai Tâm", checks: { plan: true } })],
+
+  // ---------------------------------------------------------------- reviews, sponsors, meetings, public report
+  ["member files the after-event review",    true,  () => updateDoc(doc(as(EMILY), "activities/act"), { review: { by: "emily", well: "x" }, reviewedAt: serverTimestamp() })],
+  ["member cannot review as someone else",   false, () => updateDoc(doc(as(EMILY), "activities/act"), { review: { by: "bach", well: "x" } })],
+  ["member cannot change the evidence ticks",false, () => updateDoc(doc(as(EMILY), "activities/act"), { checks: { plan: true } })],
+  ["member adds a possible sponsor",         true,  () => addDoc(collection(as(EMILY), "sponsors"), { name: "Goofoo Gelato", stage: "todo" })],
+  ["sponsor stage must be a real stage",     false, () => addDoc(collection(as(EMILY), "sponsors"), { name: "X", stage: "maybe" })],
+  ["stranger cannot see sponsors",           false, () => getDocs(collection(anon(), "sponsors"))],
+  ["member cannot delete a sponsor",         false, () => deleteDoc(doc(as(EMILY), "sponsors/sp"))],
+  ["member writes meeting notes",            true,  () => addDoc(collection(as(THUAN), "meetings"), { date: "2026-09-28", title: "Weekly", notes: "x" })],
+  ["stranger cannot read meeting notes",     false, () => getDocs(collection(anon(), "meetings"))],
+  ["nothing is public: signed-out read fails", false, () => getDoc(doc(anon(), "public/report"))],
 ];
 
 let failed = 0;

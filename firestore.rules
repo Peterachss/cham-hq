@@ -121,9 +121,34 @@ service cloud.firestore {
 
     // What Chạm has done, and how complete the evidence for it is - the
     // roadmap's "what we should track" list. Counts only, never names.
+    // Any member may file the after-event review (and nothing else);
+    // admins run the rest.
     match /activities/{actId} {
-      allow read:  if isMember();
-      allow write: if isAdmin();
+      allow read:   if isMember();
+      allow write:  if isAdmin();
+      allow update: if isMember()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['review', 'reviewedAt'])
+                    && request.resource.data.review is map
+                    && request.resource.data.review.by == me().personKey;
+    }
+
+    // Possible sponsors and where each conversation is up to. Everyone
+    // helps chase them; only admins can delete one.
+    match /sponsors/{spId} {
+      allow read:           if isMember();
+      allow create, update: if isMember()
+                            && request.resource.data.name is string
+                            && request.resource.data.name.size() > 0
+                            && request.resource.data.name.size() <= 80
+                            && request.resource.data.stage in ['todo', 'contacted', 'replied', 'meeting', 'agreed', 'no'];
+      allow delete:         if isAdmin();
+    }
+
+    // Meeting notes. Anyone may take them; only admins delete.
+    match /meetings/{mId} {
+      allow read:           if isMember();
+      allow create, update: if isMember() && request.resource.data.date is string;
+      allow delete:         if isAdmin();
     }
 
     // A sale people can pre-order from. Its name, items, prices and pickup

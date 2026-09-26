@@ -118,7 +118,7 @@
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
-  let SALES = null, ORDERS = null, ACTS = null;
+  let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -160,6 +160,8 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setSponsors(rows) { SPONSORS = Array.isArray(rows) ? rows : null; render(); },
+    setMeetings(rows) { MEETINGS = Array.isArray(rows) ? rows : null; if (S.view === "calendar") { renderMeetings(); renderCalendar(); } },
     setActivities(rows) { ACTS = Array.isArray(rows) ? rows : null; if (S.view === "tracker") renderImpact(); },
     setSales(rows) { SALES = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
     setOrders(rows) { ORDERS = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
@@ -182,7 +184,7 @@
          down when the person changes - otherwise signing in after somebody
          else leaves you looking at their buttons. */
       ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales"].forEach((id) => {
+       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings"].forEach((id) => {
         const n = $(id); if (n) n.replaceChildren();
       });
       render();
@@ -439,7 +441,7 @@
     selected: TODAY
   };
 
-  const VIEWS = ["updates","calendar","tasks","money","photos","tracker"];
+  const VIEWS = ["updates","calendar","tasks","money","photos","tracker","sponsors"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -480,7 +482,8 @@
     renderNotify();
     renderFab();
     if (S.view === "updates") { renderAnnounce(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
-    if (S.view === "calendar") renderCalendar();
+    if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
+    if (S.view === "sponsors") renderSponsors();
     if (S.view === "tasks") renderTasks();
     if (S.view === "money") { renderSales(); renderMoney(); }
     if (S.view === "photos") renderPhotos();
@@ -500,7 +503,12 @@
       state: t.status === "done" ? "past" : (t.due < TODAY ? "late" : "confirmed"),
       task: true
     }));
-    return EVENTS.concat(fromTasks);
+    const fromMeetings = (MEETINGS || []).filter((m) => m.date).map((m) => ({
+      date: m.date, title: "Meeting: " + m.title,
+      sub: m.people.map((k) => PEOPLE[k] ? PEOPLE[k].name : k).join(", "),
+      state: m.date < TODAY ? "past" : "confirmed"
+    }));
+    return EVENTS.concat(fromTasks, fromMeetings);
   }
 
   function calUndated() {
@@ -533,6 +541,7 @@
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
     $("n-photos").textContent = PHOTOS ? PHOTOS.length : "";
+    $("n-sponsors").textContent = SPONSORS ? SPONSORS.filter((x) => x.stage !== "no").length : "";
     /* for Thuan the useful number is what has not reached the sheet yet */
     $("n-money").textContent = LEDGER ? (LEDGER.filter((m) => m.status === "new").length || "") : "";
 
@@ -2502,6 +2511,243 @@
    * ------------------------------------------------------------------ */
   const EVIDENCE = [["plan", "Plan"], ["money", "Money records"], ["photos", "Photos / video"],
                     ["permission", "Permission"], ["feedback", "Feedback"], ["recap", "Recap / report"]];
+  /* The after-event review: four questions, any member, filed on the card. */
+  function reviewBlock(a) {
+    const past = !a.date || a.date <= TODAY;
+    if (!past) return null;
+    const rv = a.review;
+    const wrap = el("details", { class: "rv" + (rv ? " done" : " due") }, [
+      el("summary", { text: rv ? "Review by " + (PEOPLE[rv.by] ? PEOPLE[rv.by].name : rv.by) + (rv.at ? " \u00b7 " + pretty(rv.at) : "")
+                               : "\u270d Write the review (4 questions)" })
+    ]);
+    const Q = [["well", "What went well?"], ["bad", "What didn\u2019t?"], ["next", "What should we change next time?"],
+               ["numbers", "Any numbers? (sold, reached, left over)"]];
+    if (rv) {
+      Q.forEach(([k, q]) => { if (rv[k]) wrap.appendChild(el("p", { class: "rv-a" }, [el("b", { text: q + " " }), document.createTextNode(rv[k])])); });
+      return wrap;
+    }
+    const ins = Q.map(([k, q]) => [k, el("textarea", { class: "an-text rv-in", rows: "2", maxlength: "500", placeholder: q, "aria-label": q })]);
+    const msg = el("span", { class: "ad-msg" });
+    const save = el("button", { class: "au-go", type: "button", text: "Save review", onclick: async () => {
+      const r = { by: SESSION.personKey, at: TODAY };
+      ins.forEach(([k, t]) => { if (t.value.trim()) r[k] = t.value.trim().slice(0, 500); });
+      if (!r.well && !r.bad && !r.next) { msg.textContent = "Answer at least one of the first three."; msg.classList.add("bad"); return; }
+      save.disabled = true;
+      try { await window.ChamLive.saveReview(a.id, r); toast("Review saved for " + a.name); }
+      catch (err) { save.disabled = false; msg.textContent = "Didn\u2019t save. " + (err.code || err.message); msg.classList.add("bad"); }
+    } });
+    ins.forEach(([, t]) => wrap.appendChild(t));
+    wrap.append(el("div", { class: "sf-row" }, [msg, save]));
+    return wrap;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Sponsors - the roadmap's Phase 4 list: who, who's chasing them,
+   * where it's up to, and when to follow up.
+   * ------------------------------------------------------------------ */
+  const STAGES_SP = [["todo", "To contact"], ["contacted", "Contacted"], ["replied", "Replied"],
+                     ["meeting", "Meeting"], ["agreed", "Agreed"], ["no", "Said no"]];
+  function renderSponsors() {
+    const box = $("sponsors");
+    if (!box) return;
+    if (!SESSION || !window.ChamLive || !SPONSORS) { box.replaceChildren(el("p", { class: "viz-none", text: "Sign in to see sponsors." })); return; }
+    const admin = Boolean(SESSION.admin);
+
+    if (!box.querySelector(".sp-add")) {
+      box.replaceChildren(el("div", { class: "sp-stats", id: "sp-stats" }), spAddForm(), el("div", { id: "sp-list" }));
+    }
+    const live = SPONSORS.filter((x) => x.stage !== "no");
+    const talking = SPONSORS.filter((x) => ["contacted", "replied", "meeting"].includes(x.stage)).length;
+    const agreed = SPONSORS.filter((x) => x.stage === "agreed");
+    const due = live.filter((x) => x.stage !== "agreed" && x.next && x.next <= TODAY).length;
+    $("sp-stats").replaceChildren(...[
+      [String(live.length), "on the list"], [String(talking), "in conversation"], [String(agreed.length), "agreed"],
+      [fmtVnd(agreed.reduce((n, x) => n + (x.amount || 0), 0)), "pledged"], [String(due), "follow-ups due"]
+    ].map(([n, k], i) => el("div", { class: "im-tile" + (i === 4 && due ? " warn" : "") }, [el("span", { class: "im-n", text: n }), el("span", { class: "im-k", text: k })])));
+
+    const list = $("sp-list");
+    list.replaceChildren();
+    if (!SPONSORS.length) list.appendChild(el("p", { class: "viz-none", text: "Nobody on the list yet. Add the first possible sponsor above \u2014 a caf\u00e9, a brand, a parent\u2019s company." }));
+    STAGES_SP.forEach(([st, label]) => {
+      const rows = SPONSORS.filter((x) => x.stage === st).sort((a, b) => String(a.next || "9").localeCompare(String(b.next || "9")));
+      if (!rows.length) return;
+      list.appendChild(el("h3", { class: "sp-stage" }, [document.createTextNode(label + " "), el("span", { text: String(rows.length) })]));
+      rows.forEach((x) => list.appendChild(spCard(x, admin)));
+    });
+  }
+
+  function spAddForm() {
+    const name = el("input", { class: "ad-in wide", type: "text", maxlength: "80", placeholder: "Who? e.g. Goofoo Gelato", "aria-label": "Sponsor name" });
+    const contact = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "How to reach them (Zalo, email, IG, a parent\u2026)", "aria-label": "Contact" });
+    const ask = el("input", { class: "ad-in wide", type: "text", maxlength: "160", placeholder: "What we\u2019d ask for, e.g. lend a freezer + 500k", "aria-label": "Ask" });
+    const owner = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who chases it" }));
+    owner.value = SESSION.personKey;
+    const next = el("input", { class: "ad-in", type: "date", "aria-label": "Follow up on", title: "Follow up on" });
+    const msg = el("span", { class: "ad-msg" });
+    const go = el("button", { class: "au-go", type: "button", text: "Add to the list", onclick: async () => {
+      if (!name.value.trim()) { msg.textContent = "Who is it?"; msg.classList.add("bad"); name.focus(); return; }
+      go.disabled = true;
+      try {
+        await window.ChamLive.addSponsor({ name: name.value.trim(), contact: contact.value.trim(), ask: ask.value.trim(),
+          owner: owner.value, next: next.value || null, stage: "todo", amount: 0 });
+        [name, contact, ask, next].forEach((i) => { i.value = ""; }); msg.textContent = "";
+      } catch (err) { msg.textContent = "Didn\u2019t save. " + (err.code || err.message); msg.classList.add("bad"); }
+      go.disabled = false;
+    } });
+    return el("details", { class: "sp-add" }, [el("summary", { text: "+ Add a possible sponsor" }),
+      el("div", { class: "sale-form" }, [name, contact, ask, el("div", { class: "sf-row" }, [
+        el("label", { class: "sp-lbl" }, [document.createTextNode("Chased by "), owner]),
+        el("label", { class: "sp-lbl" }, [document.createTextNode("Follow up "), next]), go]), msg])]);
+  }
+
+  function spCard(x, admin) {
+    const save = (patch, why) => window.ChamLive.updateSponsor(x.id, { name: x.name, stage: x.stage, ...patch })
+      .catch((err) => toast("Didn\u2019t save" + (why ? " " + why : "") + ". " + (err.code || err.message)));
+    const stage = el("select", { class: "ad-in sp-sel", "aria-label": "Stage" },
+      STAGES_SP.map(([k, l]) => el("option", { value: k, text: l, selected: k === x.stage })));
+    stage.addEventListener("change", () => {
+      save({ stage: stage.value });
+      if (stage.value === "agreed") logActivity({ who: SESSION.personKey, event: "sponsor", key: true, text: "\ud83e\udd1d **" + x.name + "** agreed to support Ch\u1ea1m" });
+    });
+    const next = el("input", { class: "ad-in", type: "date", value: x.next || "", "aria-label": "Follow up on" });
+    next.addEventListener("change", () => save({ next: next.value || null }));
+    const late = x.stage !== "agreed" && x.stage !== "no" && x.next && x.next < TODAY;
+    const amount = el("input", { class: "ad-in sp-amt", type: "text", inputmode: "numeric", placeholder: "Pledged, e.g. 2tr", value: x.amount ? fmtVnd(x.amount) : "", "aria-label": "Pledged amount" });
+    amount.addEventListener("change", () => save({ amount: parseVnd(amount.value) || 0 }));
+    const note = el("input", { class: "ad-in wide", type: "text", maxlength: "200", placeholder: "What happened? e.g. Messaged on Zalo, waiting", "aria-label": "Log a contact" });
+    const logIt = el("button", { class: "act", type: "button", text: "Log it", onclick: () => {
+      const t = note.value.trim(); if (!t) { note.focus(); return; }
+      const entry = { date: TODAY, by: SESSION.personKey, text: t.slice(0, 200) };
+      const patch = { log: x.log.concat(entry).slice(-30) };
+      if (x.stage === "todo") patch.stage = "contacted";
+      if (!x.next || x.next <= TODAY) patch.next = isoDay(new Date(Date.now() + 7 * 864e5));   // chase again in a week
+      save(patch); note.value = "";
+    } });
+    note.addEventListener("keydown", (e) => { if (e.key === "Enter") logIt.click(); });
+    return el("article", { class: "sp-card" + (late ? " late" : "") + (x.stage === "agreed" ? " agreed" : "") }, [
+      el("div", { class: "sp-top" }, [
+        el("div", { class: "sp-who" }, [el("b", { text: x.name }),
+          el("span", { text: [x.contact, x.ask ? "Ask: " + x.ask : ""].filter(Boolean).join(" \u00b7 ") })]),
+        x.owner && PEOPLE[x.owner] ? el("span", { class: "sp-owner" }, [avatar(x.owner), el("span", { text: PEOPLE[x.owner].name })]) : null
+      ]),
+      el("div", { class: "sf-row sp-row" }, [stage,
+        el("label", { class: "sp-lbl" + (late ? " late" : "") }, [document.createTextNode(late ? "Overdue \u2014 follow up " : "Follow up "), next]),
+        x.stage === "agreed" || x.amount ? amount : null,
+        admin ? el("button", { class: "act ghost danger", type: "button", text: "Delete",
+          onclick: (e) => { if (!tapTwice(e.currentTarget, "Tap again to delete")) return; window.ChamLive.deleteSponsor(x.id).catch((err) => toast("Didn\u2019t delete. " + (err.code || err.message))); } }) : null]),
+      el("div", { class: "sf-row sp-row" }, [note, logIt]),
+      x.log.length ? el("details", { class: "sp-log" }, [el("summary", { text: x.log.length + " contact" + (x.log.length === 1 ? "" : "s") + " logged" }),
+        el("ul", {}, x.log.slice().reverse().map((l) => el("li", {}, [el("b", { text: pretty(l.date) + " \u00b7 " + (PEOPLE[l.by] ? PEOPLE[l.by].name : l.by) + ": " }), document.createTextNode(l.text)])))]) : null
+    ]);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Meetings - notes, who came, and decisions that become jobs.
+   * ------------------------------------------------------------------ */
+  function renderMeetings() {
+    const box = $("meetings");
+    if (!box) return;
+    const on = Boolean(SESSION && window.ChamLive && MEETINGS);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (!box.querySelector("#mt-list")) {
+      box.replaceChildren(
+        el("div", { class: "sl-headrow" }, [
+          el("div", {}, [el("h3", { class: "an-h", text: "Meetings" }),
+            el("p", { class: "an-sub", text: "Who came, what was said, and what was decided. A decision with a name on it becomes a job in one tap." })]),
+          el("button", { class: "act", type: "button", text: "+ New meeting", onclick: () => openMeeting(null) })
+        ]),
+        el("div", { id: "mt-form" }),
+        el("div", { id: "mt-list" }));
+    }
+    const list = $("mt-list");
+    list.replaceChildren();
+    const ms = MEETINGS.slice().sort((a, b) => b.date.localeCompare(a.date));
+    const upcoming = ms.filter((m) => m.date >= TODAY).reverse();
+    const past = ms.filter((m) => m.date < TODAY);
+    if (!ms.length) list.appendChild(el("p", { class: "viz-none", text: "No meetings yet. Tap + New meeting to plan the next one or write up the last." }));
+    upcoming.concat(past.slice(0, 6)).forEach((m) => list.appendChild(meetingCard(m, m.date >= TODAY)));
+  }
+
+  function meetingCard(m, soon) {
+    const admin = Boolean(SESSION.admin);
+    const decisions = m.decisions.map((d, i) => el("li", { class: "mt-dec" }, [
+      el("span", { class: "mt-dtext", text: d.text }),
+      d.who && PEOPLE[d.who] ? el("span", { class: "sp-owner" }, [avatar(d.who), el("span", { text: PEOPLE[d.who].name + (d.due ? " \u00b7 " + relDay(d.due) : "") })]) : null,
+      d.taskId ? el("span", { class: "mt-job", text: "\u2713 On the jobs list" })
+        : (admin && d.who ? el("button", { class: "act", type: "button", text: "Make it a job", onclick: async (e) => {
+            const b = e.currentTarget; b.disabled = true;
+            try {
+              const id = await window.ChamLive.addTask({ who: d.who, title: d.text, due: d.due || null, note: "From the " + pretty(m.date) + " meeting" });
+              const ds = m.decisions.map((x, j) => j === i ? { ...x, taskId: id } : x);
+              await window.ChamLive.saveMeeting(m.id, { date: m.date, decisions: ds });
+              logActivity({ who: d.who, ref: id, event: "assign", text: "Given a job at the meeting: **" + d.text + "**" });
+              toast("Added to " + PEOPLE[d.who].name + "\u2019s jobs");
+            } catch (err) { b.disabled = false; toast("Didn\u2019t add. " + (err.code || err.message)); }
+          } }) : null)
+    ]));
+    return el("article", { class: "mt-card" + (soon ? " soon" : "") }, [
+      el("div", { class: "sp-top" }, [
+        el("div", { class: "sp-who" }, [el("b", { text: m.title }),
+          el("span", { text: pretty(m.date) + (soon ? " \u00b7 " + relDay(m.date) : "") + (m.people.length ? " \u00b7 " + m.people.map((k) => PEOPLE[k] ? PEOPLE[k].name : k).join(", ") : "") })]),
+        el("div", { class: "sf-row" }, [
+          el("button", { class: "act ghost", type: "button", text: m.notes || m.decisions.length ? "Edit" : "Add notes", onclick: () => openMeeting(m) }),
+          admin ? el("button", { class: "act ghost danger", type: "button", text: "Delete",
+            onclick: (e) => { if (!tapTwice(e.currentTarget, "Tap again")) return; window.ChamLive.deleteMeeting(m.id).catch((err) => toast("Didn\u2019t delete. " + (err.code || err.message))); } }) : null])
+      ]),
+      m.notes ? el("p", { class: "mt-notes", text: m.notes }) : null,
+      decisions.length ? el("div", {}, [el("span", { class: "sf-k", text: "Decided" }), el("ul", { class: "mt-decs" }, decisions)]) : null
+    ]);
+  }
+
+  function openMeeting(m) {
+    const host = $("mt-form");
+    const date = el("input", { class: "ad-in", type: "date", value: m ? m.date : TODAY, "aria-label": "Date" });
+    const title = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: m ? m.title : "Team meeting", "aria-label": "Title" });
+    const chosen = new Set(m ? m.people : []);
+    const who = el("div", { class: "filters mt-people" }, Object.keys(PEOPLE).filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || "")).map((k) => {
+      const b = el("button", { class: "chipbtn plain", type: "button", "aria-pressed": String(chosen.has(k)), text: PEOPLE[k].name });
+      b.addEventListener("click", () => { chosen.has(k) ? chosen.delete(k) : chosen.add(k); b.setAttribute("aria-pressed", String(chosen.has(k))); });
+      return b;
+    }));
+    const notes = el("textarea", { class: "an-text", rows: "4", maxlength: "4000", placeholder: "Notes: what was discussed", "aria-label": "Notes" });
+    notes.value = m ? m.notes : "";
+    const decs = el("div", { class: "sf-items" });
+    const addDec = (d) => {
+      const t = el("input", { class: "ad-in wide mt-t", type: "text", maxlength: "160", placeholder: "Decision or action", "aria-label": "Decision", value: d ? d.text : "" });
+      const w = peopleOptions(el("select", { class: "ad-in mt-w", "aria-label": "Who" }, [el("option", { value: "", text: "Nobody" })]));
+      w.value = d && d.who ? d.who : "";
+      const due = el("input", { class: "ad-in mt-d", type: "date", "aria-label": "By when", value: d && d.due ? d.due : "" });
+      const row = el("div", { class: "sf-item mt-row" }, [t, w, due]);
+      row._taskId = d ? d.taskId || null : null;
+      decs.appendChild(row);
+    };
+    (m ? m.decisions : []).forEach(addDec);
+    if (!m || !m.decisions.length) addDec(null);
+    const msg = el("span", { class: "ad-msg" });
+    const save = el("button", { class: "au-go", type: "button", text: "Save meeting", onclick: async () => {
+      if (!date.value) { msg.textContent = "Pick a date."; msg.classList.add("bad"); return; }
+      const ds = [...decs.querySelectorAll(".mt-row")].map((r) => ({ text: r.querySelector(".mt-t").value.trim(),
+        who: r.querySelector(".mt-w").value || null, due: r.querySelector(".mt-d").value || null, taskId: r._taskId || null }))
+        .filter((d) => d.text).map((d) => { Object.keys(d).forEach((k) => { if (d[k] === null) delete d[k]; }); return d; });
+      save.disabled = true;
+      try {
+        await window.ChamLive.saveMeeting(m ? m.id : null, { date: date.value, title: title.value.trim() || "Meeting",
+          people: [...chosen], notes: notes.value.trim(), decisions: ds, by: SESSION.personKey });
+        host.replaceChildren(); toast("Meeting saved");
+      } catch (err) { save.disabled = false; msg.textContent = "Didn\u2019t save. " + (err.code || err.message); msg.classList.add("bad"); }
+    } });
+    host.replaceChildren(el("div", { class: "sale-form mt-form" }, [
+      el("div", { class: "sf-row" }, [title, date]),
+      el("span", { class: "sf-k", text: "Who came" }), who, notes,
+      el("span", { class: "sf-k", text: "Decisions \u2014 give one a name and it can become a job" }), decs,
+      el("div", { class: "sf-row" }, [
+        el("button", { class: "act ghost", type: "button", text: "+ Another decision", onclick: () => addDec(null) }),
+        el("div", { class: "sf-row" }, [el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: () => host.replaceChildren() }), save])]),
+      msg]));
+    title.focus();
+  }
+
   function renderImpact() {
     const box = $("impact");
     if (!box) return;
@@ -2523,6 +2769,7 @@
       ["Used for programs", sm ? shortVnd(sm.programs) : "\u2014"]
     ].map(([k, v]) => el("div", { class: "im-tile" }, [el("span", { class: "im-n", text: v }), el("span", { class: "im-k", text: k })])));
 
+    acts.forEach((a) => { if (a.review) a.checks = { ...a.checks, feedback: true }; });
     const done = acts.reduce((n, a) => n + EVIDENCE.filter(([k]) => a.checks[k]).length, 0);
     const total = acts.length * EVIDENCE.length;
     const list = el("div", { class: "im-list" });
@@ -2540,7 +2787,8 @@
           text: (a.checks[k] ? "\u2713 " : "") + label,
           onclick: (e) => { e.currentTarget.disabled = true; window.ChamLive.setCheck(a.id, k, !a.checks[k]).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message))); }
         }))),
-        el("span", { class: "im-score" + (got === EVIDENCE.length ? " full" : ""), text: got + "/" + EVIDENCE.length })
+        el("span", { class: "im-score" + (got === EVIDENCE.length ? " full" : ""), text: got + "/" + EVIDENCE.length }),
+        reviewBlock(a)
       ]));
     });
 

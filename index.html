@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=44" />
+<link rel="stylesheet" href="styles.css?v=46" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -40,6 +40,7 @@
       <button class="tab" role="tab" id="tab-money" aria-controls="view-money" aria-selected="false" data-view="money">Money <span class="n" id="n-money"></span></button>
       <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
       <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
+      <button class="tab" role="tab" id="tab-sponsors" aria-controls="view-sponsors" aria-selected="false" data-view="sponsors">Sponsors <span class="n" id="n-sponsors"></span></button>
     </nav>
   </div>
 </header>
@@ -70,6 +71,7 @@
   <section id="view-calendar" role="tabpanel" aria-labelledby="tab-calendar" tabindex="0" hidden>
     <h2 class="sec">Calendar</h2>
     <p class="hint">Green is confirmed or already happened. Amber is a target somebody named but nobody has locked. Click a day to see what is on it.</p>
+    <div id="meetings" class="meetings" hidden></div>
     <div class="cal-layout">
       <div>
         <div class="calhead">
@@ -134,6 +136,12 @@
     <div id="tracker"></div>
   </section>
 
+  <section id="view-sponsors" role="tabpanel" aria-labelledby="tab-sponsors" tabindex="0" hidden>
+    <h2 class="sec">Sponsors</h2>
+    <p class="hint">Everyone we might ask for support, and where each conversation is up to. Give each one an owner and a follow-up date &mdash; the owner gets a ping on the day. Members only.</p>
+    <div id="sponsors"></div>
+  </section>
+
   <footer class="foot">
     <div class="links" id="links"></div>
     <span id="foot-note"></span>
@@ -152,7 +160,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=44" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=46" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -173,8 +181,8 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=44"></script>
-<script src="app.js?v=44"></script>
-<script type="module" src="live.js?v=44"></script>
+<script src="firebase-config.js?v=46"></script>
+<script src="app.js?v=46"></script>
+<script type="module" src="live.js?v=46"></script>
 </body>
 </html>
