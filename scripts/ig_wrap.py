@@ -77,14 +77,15 @@ def load_config():
 def browser(p, headless):
     """A persistent profile, so the bot stays signed in between nights."""
     os.makedirs(PROFILE, exist_ok=True)
-    return p.chromium.launch_persistent_context(
-        PROFILE,
-        headless=headless,
-        viewport={"width": 1280, "height": 900},
-        locale="en-US",
-        timezone_id="Asia/Ho_Chi_Minh",
-        args=["--disable-blink-features=AutomationControlled"],
-    )
+    opts = dict(headless=headless, viewport={"width": 1280, "height": 900}, locale="en-US",
+                timezone_id="Asia/Ho_Chi_Minh", args=["--disable-blink-features=AutomationControlled"])
+    try:
+        return p.chromium.launch_persistent_context(PROFILE, **opts)
+    except Exception as e:
+        # Playwright's own Chromium can be refused by Windows; the Edge that
+        # ships with Windows is the same engine and always there
+        log(f"bundled Chromium would not start ({str(e).splitlines()[0][:80]}) - using Edge")
+        return p.chromium.launch_persistent_context(PROFILE, channel="msedge", **opts)
 
 
 def do_login(cfg):
@@ -95,17 +96,32 @@ def do_login(cfg):
     with sync_playwright() as p:
         ctx = browser(p, headless=False)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto("https://www.instagram.com/accounts/login/", timeout=60000)
-        print()
-        print("  Sign the THROWAWAY account in, in the window that just opened.")
-        print("  Make sure it is a member of the Chạm group chat.")
-        print("  When you can see your inbox, come back here and press Enter.")
-        print()
-        input("  Press Enter when you are signed in... ")
+        # already signed in from last time? then there is nothing to do
         page.goto(cfg["thread_url"], timeout=60000)
-        page.wait_for_timeout(4000)
-        log("login: profile saved to " + PROFILE)
+        page.wait_for_timeout(5000)
+        if "/accounts/login" not in page.url and "/challenge" not in page.url:
+            log("login: the bot account is already signed in")
+        else:
+            print()
+            print("  Sign the THROWAWAY account in, in the window that just opened.")
+            print("  Make sure it is a member of the Chạm group chat.")
+            print("  This notices by itself when you're in - no need to come back here.")
+            print()
+            log("login: waiting for someone to sign in (up to 15 minutes)")
+            for _ in range(300):                       # 15 minutes, checked every 3 seconds
+                page.wait_for_timeout(3000)
+                u = page.url
+                if "instagram.com" in u and not any(x in u for x in ("/accounts/login", "/challenge", "/two_factor", "/accounts/onetap")):
+                    break
+            else:
+                ctx.close()
+                status.beat("chatwrap", None, "waiting: nobody signed the Instagram bot in")
+                sys.exit("nobody signed in within 15 minutes - run --login again")
+            page.goto(cfg["thread_url"], timeout=60000)
+            page.wait_for_timeout(4000)
+            log("login: signed in, profile saved to " + PROFILE)
         ctx.close()
+    status.beat("chatwrap", True, "signed in - wraps the chat every night at 9pm")
     # remembered, so the 9pm run knows it is worth opening a browser at all
     with open(os.path.join(HOME, "ig-signed-in"), "w", encoding="utf-8") as f:
         f.write(dt.datetime.now().isoformat())
