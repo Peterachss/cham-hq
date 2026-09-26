@@ -1930,6 +1930,141 @@
     ]));
   }
 
+  /* ------------------------------------------------------------------ *
+   * what the fundraising adds up to
+   *
+   * The roadmap's first money rule: "track the money that remains after
+   * costs, not only total sales." So every fundraiser is shown as money in,
+   * its costs, and what was left - and the club's total is measured against
+   * the milestones the roadmap sets, not against a number someone liked.
+   *
+   * How a line is counted:
+   *   - Teaching spend is money USED for programs, never a fundraiser cost.
+   *   - Any other spend on a budget line is that fundraiser's cost.
+   *   - Other spend with no budget line is a general running cost.
+   *   - Raised after costs = all money in, less fundraiser costs.
+   * ------------------------------------------------------------------ */
+  const PER_EVENT_TARGET = [1000000, 3000000];      // roadmap, Phase 2
+  const MILESTONES = [
+    { at: 10000000,  name: "Early funds",      note: "Phase 2 \u00b7 5\u201310M from school fundraisers you can repeat" },
+    { at: 50000000,  name: "Sponsored events", note: "Phase 4 \u00b7 20\u201350M with sponsors behind bigger events" },
+    { at: 100000000, name: "The 100M goal",    note: "Phase 5 \u00b7 the end goal in the plan" },
+    { at: 200000000, name: "Stretch",          note: "Phase 6 \u00b7 100\u2013200M, once Ch\u1ea1m expands beyond HCMC" }
+  ];
+  const isProgram = (m) => m.kind === "out" && m.category === "Teaching";
+  const shortVnd = (n) => {
+    const a = Math.abs(n);
+    const t = a >= 1e6 ? (a / 1e6).toFixed(a % 1e6 === 0 ? 0 : 1).replace(/\.0$/, "") + "M"
+            : a >= 1e3 ? Math.round(a / 1e3) + "k" : String(a);
+    return (n < 0 ? "\u2212" : "") + t;
+  };
+
+  function moneySummary(all) {
+    const lines = new Map();
+    let totalIn = 0, fundCosts = 0, programs = 0, running = 0, totalOut = 0;
+    all.forEach((m) => {
+      if (m.kind === "in") totalIn += m.amount; else totalOut += m.amount;
+      if (isProgram(m)) { programs += m.amount; return; }
+      if (!m.budgetLine) { if (m.kind === "out") running += m.amount; return; }
+      const f = lines.get(m.budgetLine) || { name: m.budgetLine, inn: 0, out: 0, first: null };
+      if (m.kind === "in") f.inn += m.amount; else { f.out += m.amount; fundCosts += m.amount; }
+      if (m.date && (!f.first || m.date < f.first)) f.first = m.date;
+      lines.set(m.budgetLine, f);
+    });
+    const funds = [...lines.values()].map((f) => ({ ...f, left: f.inn - f.out }))
+      .sort((a, b) => (b.first || "").localeCompare(a.first || "") || a.name.localeCompare(b.name));
+    return { funds, raised: totalIn - fundCosts, programs, running, available: totalIn - totalOut };
+  }
+
+  function renderMoneyGoal(all) {
+    const box = $("money-goal");
+    box.replaceChildren();
+    if (!all.length) return;
+    const sum = moneySummary(all);
+
+    /* ---- the goal ---- */
+    const next = MILESTONES.find((ms) => ms.at > sum.raised) || MILESTONES[MILESTONES.length - 1];
+    const pct = Math.max(0, Math.min(100, Math.round((sum.raised / next.at) * 100)));
+    const ladder = el("ol", { class: "ms-ladder", "aria-label": "Roadmap milestones" });
+    MILESTONES.forEach((ms) => {
+      const state = sum.raised >= ms.at ? "done" : ms === next ? "now" : "later";
+      ladder.appendChild(el("li", { class: "ms " + state, title: ms.note }, [
+        el("span", { class: "ms-at", text: shortVnd(ms.at) }),
+        el("span", { class: "ms-name", text: ms.name })
+      ]));
+    });
+    const meter = el("div", { class: "goal-meter", role: "meter", "aria-valuemin": "0",
+      "aria-valuemax": String(next.at), "aria-valuenow": String(Math.max(0, sum.raised)),
+      "aria-label": "Raised after costs, towards " + next.name }, [
+      el("i", { style: "width:" + pct + "%" })
+    ]);
+    tip(meter, [fmtVnd(sum.raised) + " of " + fmtVnd(next.at), next.note]);
+
+    const goal = el("section", { class: "viz goal" }, [
+      el("div", { class: "goal-top" }, [
+        el("div", {}, [
+          el("span", { class: "tl-k", text: "Raised after costs, all time" }),
+          el("span", { class: "goal-n", text: fmtVnd(sum.raised) })
+        ]),
+        el("div", { class: "goal-next" }, [
+          el("b", { text: pct + "%" }),
+          el("span", { text: " of the way to " + shortVnd(next.at) + " \u2014 " + next.name })
+        ])
+      ]),
+      meter,
+      el("p", { class: "goal-note", text: next.note }),
+      ladder,
+      el("div", { class: "goal-split" }, [
+        el("span", {}, [el("span", { class: "tl-k", text: "Used for programs" }), el("b", { text: fmtVnd(sum.programs) })]),
+        sum.running ? el("span", {}, [el("span", { class: "tl-k", text: "Running costs" }), el("b", { text: fmtVnd(sum.running) })]) : null,
+        el("span", {}, [el("span", { class: "tl-k", text: "Available now" }), el("b", { text: fmtVnd(sum.available) })])
+      ])
+    ]);
+
+    /* ---- each fundraiser ---- */
+    const funds = sum.funds;
+    let table = null;
+    if (funds.length) {
+      const biggest = Math.max(PER_EVENT_TARGET[1], ...funds.map((f) => Math.max(0, f.left)));
+      table = el("section", { class: "viz" }, [
+        el("h3", { class: "viz-h", text: "Each fundraiser, after costs" }),
+        el("p", { class: "viz-sub", text: "What each one actually left once its costs were paid. The shaded band is the roadmap\u2019s 1\u20133M target for a school fundraiser." })
+      ]);
+      const rows = el("div", { class: "fund-rows" });
+      funds.forEach((f) => {
+        let verdict, tone;
+        if (!f.inn) { verdict = "costs so far"; tone = ""; }
+        else if (f.left < PER_EVENT_TARGET[0]) { verdict = "below target"; tone = "bad"; }
+        else if (f.left <= PER_EVENT_TARGET[1]) { verdict = "on target"; tone = "ok"; }
+        else { verdict = "above target"; tone = "ok"; }
+
+        const band = el("span", { class: "fund-band", "aria-hidden": "true",
+          style: "left:" + (PER_EVENT_TARGET[0] / biggest * 100) + "%;width:" + ((PER_EVENT_TARGET[1] - PER_EVENT_TARGET[0]) / biggest * 100) + "%" });
+        const bar = el("button", { class: "fund-bar" + (f.left < 0 ? " neg" : ""), type: "button",
+          style: "width:" + Math.max(1.5, Math.min(100, Math.abs(f.left) / biggest * 100)) + "%",
+          "aria-label": f.name + ": " + fmtVnd(f.left) + " left after costs" });
+        tip(bar, [f.name, fmtVnd(f.inn) + " in \u2212 " + fmtVnd(f.out) + " costs", "= " + fmtVnd(f.left) + " left"]);
+
+        rows.appendChild(el("div", { class: "fund-row" }, [
+          el("div", { class: "fund-head" }, [
+            el("span", { class: "fund-name", text: f.name }),
+            el("span", { class: "fund-verdict " + tone, text: verdict })
+          ]),
+          el("div", { class: "fund-track" }, [band, bar]),
+          el("div", { class: "fund-nums" }, [
+            el("span", {}, [el("span", { class: "tl-k", text: "In" }), el("b", { text: fmtVnd(f.inn) })]),
+            el("span", {}, [el("span", { class: "tl-k", text: "Costs" }), el("b", { text: fmtVnd(f.out) })]),
+            el("span", { class: "fund-left" }, [el("span", { class: "tl-k", text: "Left" }), el("b", { text: fmtVnd(f.left) })])
+          ])
+        ]));
+      });
+      table.appendChild(rows);
+    }
+
+    box.append(goal);
+    if (table) box.append(table);
+  }
+
   function renderMoney() {
     const list = $("money-list");
     const tiles = $("money-tiles");
@@ -1939,6 +2074,7 @@
     renderMoneyAdd();
 
     if (!SESSION) {
+      $("money-goal").replaceChildren();
       $("money-tools").replaceChildren();
       $("money-filters").replaceChildren();
       list.appendChild(el("div", { class: "empty-state", text: "Sign in to see the money log. It is kept off the public page on purpose." }));
@@ -1946,6 +2082,7 @@
     }
 
     const all = LEDGER || [];
+    renderMoneyGoal(all);
     const thisMonth = monthKey(TODAY);
     const inMonth = all.filter((m) => monthKey(m.date) === thisMonth);
     const outM = inMonth.filter((m) => m.kind === "out").reduce((a, m) => a + m.amount, 0);
@@ -2054,7 +2191,7 @@
         const meta = [m.category];
         if (m.budgetLine) meta.push(m.budgetLine);
         meta.push(whoName(m.paidBy));
-        meta.push(methodName);
+        if (methodName) meta.push(methodName);
 
         const flags = el("span", { class: "lg-flags" });
         if (m.owed && !m.repaid) flags.appendChild(el("span", { class: "lg-flag owed", text: "owe " + whoName(m.paidBy) }));

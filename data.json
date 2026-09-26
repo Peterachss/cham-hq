@@ -3,13 +3,13 @@
   "PEOPLE": {
     "bach": {
       "name": "Bach",
-      "role": "Lead",
+      "role": "Executive director, co-founder",
       "color": "#0f6b5a",
       "initials": "B"
     },
     "thuan": {
       "name": "Thuan",
-      "role": "Finance",
+      "role": "Treasurer, co-founder",
       "color": "#1d5b86",
       "initials": "TN"
     },
@@ -21,13 +21,13 @@
     },
     "emily": {
       "name": "Emily",
-      "role": "Marketing, social",
+      "role": "Fundraising, marketing & social media",
       "color": "#a8452f",
       "initials": "E"
     },
     "thanh": {
       "name": "Thanh",
-      "role": "Research",
+      "role": "Development support",
       "color": "#2f6f3f",
       "initials": "TH"
     },
@@ -39,7 +39,7 @@
     },
     "sarah": {
       "name": "Sarah",
-      "role": "Merch design",
+      "role": "Campaign director, co-founder",
       "color": "#9d6a12",
       "initials": "S"
     },

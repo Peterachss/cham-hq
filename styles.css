@@ -78,7 +78,9 @@
     font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
     color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
   }
-  .tabs { display: flex; gap: 2px; overflow-x: auto; }
+  /* six tabs overflow a narrow screen: still scrollable, no thick scrollbar */
+  .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+  .tabs::-webkit-scrollbar { display: none; }
   .tab {
     appearance: none; background: none; border: 0; border-bottom: 2px solid transparent;
     font: inherit; font-size: 14px; color: var(--muted); white-space: nowrap;
@@ -779,3 +781,60 @@
   .cw-head .grp { margin: 0; }
   .cw-sub { font-size: 12.5px; color: var(--muted); }
   .chatwrap .drafts { margin-bottom: 10px; }
+
+  /* ------------------------------------------------------------------ *
+   * the goal, and each fundraiser after costs
+   * ------------------------------------------------------------------ */
+  .goal .goal-top { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
+  .goal .goal-top > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+  .goal-n { font-family: var(--sans); font-size: 32px; font-weight: 600; line-height: 1; color: var(--ink); }
+  .goal-next { font-size: 13px; color: var(--ink-2); }
+  .goal-next b { font-size: 15px; color: var(--jade); }
+  .goal-meter {
+    height: 12px; border-radius: 999px; background: var(--viz-rest, var(--slate-soft));
+    overflow: hidden; cursor: default;
+  }
+  .goal-meter i { display: block; height: 100%; background: var(--viz-done, var(--jade)); border-radius: 999px; min-width: 6px; }
+  .goal-note { font-size: 12.5px; color: var(--muted); margin: 8px 0 12px; }
+
+  .ms-ladder { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .ms { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line-soft); }
+  .ms-at { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .ms-name { font-size: 11.5px; color: var(--muted); }
+  .ms.now { border-color: var(--jade); background: var(--jade-soft); }
+  .ms.now .ms-at, .ms.now .ms-name { color: var(--jade); }
+  .ms.done .ms-at { color: var(--ink-2); text-decoration: line-through; }
+
+  .goal-split { display: flex; flex-wrap: wrap; gap: 8px 26px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+  .goal-split > span { display: flex; flex-direction: column; gap: 2px; }
+  .goal-split b { font-family: var(--mono); font-size: 14px; color: var(--ink); font-weight: 600; }
+
+  .fund-rows { display: flex; flex-direction: column; gap: 16px; }
+  .fund-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .fund-name { font-size: 14.5px; color: var(--ink); }
+  .fund-verdict { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  .fund-verdict.ok { color: var(--jade); }
+  .fund-verdict.bad { color: var(--clay); }
+  .fund-track { position: relative; height: 16px; background: var(--viz-grid, var(--line-soft)); border-radius: 3px; }
+  /* the 1-3M target sits ON TOP of the bar - a fundraiser that beat it
+     is exactly when you want to see where the target was */
+  .fund-band {
+    position: absolute; top: -3px; bottom: -3px; z-index: 1; pointer-events: none;
+    background: rgba(255, 255, 255, .16);
+    border-left: 2px solid var(--ink-2); border-right: 2px solid var(--ink-2); border-radius: 2px;
+  }
+  .fund-bar {
+    position: relative; appearance: none; border: 0; padding: 0; cursor: pointer; display: block;
+    height: 100%; background: var(--viz-done, var(--jade)); border-radius: 3px 4px 4px 3px;
+  }
+  .fund-bar.neg { background: var(--viz-late, var(--clay)); }
+  .fund-bar:hover, .fund-bar:focus-visible { filter: brightness(1.12); outline: none; }
+  .fund-nums { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: 7px; }
+  .fund-nums > span { display: flex; align-items: baseline; gap: 6px; }
+  .fund-nums b { font-family: var(--mono); font-size: 13px; color: var(--ink-2); font-weight: 500; }
+  .fund-left b { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 560px) {
+    .ms-ladder { grid-template-columns: repeat(2, 1fr); }
+    .goal-n { font-size: 26px; }
+  }
