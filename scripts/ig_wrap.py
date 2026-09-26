@@ -156,7 +156,10 @@ def scrape(cfg, headless):
             """() => {
               const out = [];
               const seen = new Set();
-              document.querySelectorAll('div[role="row"], div[role="listitem"]').forEach((r) => {
+              // only the open conversation - not Instagram's menu or the chat list down the side
+              const root = document.querySelector('[aria-label^="Messages in conversation"], [aria-label^="Conversation with"]')
+                        || document.querySelector('div[role="main"]') || document;
+              root.querySelectorAll('div[role="row"], div[role="listitem"]').forEach((r) => {
                 const t = (r.innerText || '').trim();
                 if (!t || t.length < 2 || seen.has(t)) return;
                 seen.add(t);
@@ -164,7 +167,7 @@ def scrape(cfg, headless):
               });
               if (out.length) return out;
               // fallback: any span that carries a decent run of text
-              document.querySelectorAll('span[dir="auto"]').forEach((s) => {
+              root.querySelectorAll('span[dir="auto"]').forEach((s) => {
                 const t = (s.innerText || '').trim();
                 if (t.length > 1 && !seen.has(t)) { seen.add(t); out.push(t); }
               });
@@ -243,9 +246,18 @@ KEEP_SIGNAL = re.compile("|".join([
 FILLER = re.compile(r"^(ok(ay)?|k+|yes+|yeah+|ya|yep|yup|no+|nope|lol+|lmao+|ha(ha)+|h+a+|hha+|he(he)+|omg|same|true|fr|bruh+|nice|cool|thanks?|thank you|ty|sure|wait|what|huh|oh+|ah+|hmm+|damn|bro|guys|oh yeah( guys)?|good job|gj|gl|w|l)[.!?\s]*$", re.I)
 
 
+# Instagram's own buttons and labels, and "20m" / "2d" style times
+IG_UI = re.compile(r"^(home|reels|messages|search|explore|notifications|create|profile|more|threads|also from meta|"
+                   r"your note|primary|general|requests|active now|active \d+\s*\w+ ago|seen( by .*)?|sent|delivered|"
+                   r"typing|message\.\.\.|isHCMC ch\u1ea1m nonprofit|ishcmc ch\u1ea1m nonprofit|you sent|reply|react|"
+                   r"\d+\s*[smhdw]|\d+\s*(min|mins|hour|hours|day|days|week|weeks)( ago)?)$", re.I)
+
+
 def is_noise(t):
     t = t.strip()
     if len(t) < 2 or not re.search(r"[a-z\u00c0-\u1ef9\d]", t, re.I):
+        return True
+    if IG_UI.match(t):
         return True
     return any(r.search(t) for r in NOISE)
 

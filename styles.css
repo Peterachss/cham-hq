@@ -1284,3 +1284,9 @@
   .sys-text { font-size: 12.5px; color: var(--muted); text-align: right; }
   .sys-text.red { color: var(--clay); } .sys-text.amber { color: var(--marigold); }
   @media (max-width: 620px) { .sys-row { grid-template-columns: auto 1fr; } .sys-text { grid-column: 2; text-align: left; } }
+
+  /* archive: jobs finished over a month ago, folded at the bottom of Tasks */
+  .archive { margin-top: 18px; }
+  .archive summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 0; }
+  .archive .me-list { margin-top: 8px; }
+  .archive .me-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

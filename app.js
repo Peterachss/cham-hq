@@ -1514,8 +1514,11 @@
     const who = S.person === "all" ? [...new Set(TASKS.map((t) => t.who))] : [S.person];
     let any = false;
 
+    const archive = [];
     who.forEach((k) => {
       let rows = TASKS.filter((t) => t.who === k);
+      // finished more than a month ago: folded into the archive at the bottom
+      rows = rows.filter((t) => { if (isArchived(t)) { archive.push(t); return false; } return true; });
       if (S.status === "live") rows = rows.filter((t) => t.status !== "done");
       if (S.status === "done") rows = rows.filter((t) => t.status === "done");
       if (!rows.length) return;
@@ -1556,6 +1559,25 @@
     });
 
     if (!any) board.appendChild(el("div", { class: "empty-state", text: "Nothing here with that filter." }));
+
+    if (archive.length && S.status !== "live") {
+      archive.sort((a, b) => String(finishedOn(b)).localeCompare(String(finishedOn(a))));
+      board.appendChild(el("details", { class: "archive" }, [
+        el("summary", { text: "Archive · " + archive.length + " job" + (archive.length === 1 ? "" : "s") + " finished more than a month ago" }),
+        el("ul", { class: "me-list" }, archive.map((t) => el("li", {}, [
+          avatar(t.who), document.createTextNode(" "),
+          el("b", { text: t.title }),
+          document.createTextNode(" · " + (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + " · finished " + pretty(finishedOn(t)))
+        ])))
+      ]));
+    }
+  }
+
+  /* When a finished job was finished: the tick-off date, else its due date. */
+  const finishedOn = (t) => t.doneOn || t.due || null;
+  function isArchived(t) {
+    const d = t.status === "done" ? finishedOn(t) : null;
+    return Boolean(d) && days(d, TODAY) > 30;
   }
 
   /* ------------------------------------------------------------------ *
