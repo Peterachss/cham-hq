@@ -409,12 +409,15 @@
     const drafts = el("div", { class: "drafts" });
     const pmsg = el("span", { class: "ad-msg" });
 
-    const sortBtn = el("button", { class: "act", type: "button", text: "Sort it into lines",
-      onclick: () => {
+    function sortIntoLines() {
         drafts.replaceChildren();
         pmsg.textContent = "";
         const lines = paste.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        if (!lines.length) { pmsg.textContent = "Nothing pasted yet."; pmsg.classList.add("bad"); return; }
+        if (!lines.length) {
+          pmsg.textContent = "Paste the messages into the box first.";
+          pmsg.classList.add("bad");
+          return 0;
+        }
         pmsg.classList.remove("bad");
         lines.forEach((line) => {
           const [guess, body] = splitSpeaker(line);
@@ -432,13 +435,25 @@
           drafts.appendChild(row);
         });
         pmsg.textContent = lines.length + " line" + (lines.length === 1 ? "" : "s") + " ready. Check who said what, then post.";
-      }
-    });
+        return lines.length;
+    }
+
+    const sortBtn = el("button", { class: "act", type: "button", text: "Sort it into lines",
+      onclick: () => sortIntoLines() });
 
     const postAll = el("button", { class: "au-go", text: "Post all of it",
       onclick: async () => {
+        /* Sorting first is easy to skip, so do it for them rather than
+           saying "nothing to post" at somebody who has clearly pasted. */
+        if (!drafts.childElementCount && paste.value.trim()) sortIntoLines();
         const rows = [...drafts.children].map((r) => r._read()).filter((r) => r.text);
-        if (!rows.length) { pmsg.textContent = "Nothing to post."; pmsg.classList.add("bad"); return; }
+        if (!rows.length) {
+          pmsg.textContent = paste.value.trim()
+            ? "Nothing usable in there."
+            : "Paste the messages into the box first.";
+          pmsg.classList.add("bad");
+          return;
+        }
         pmsg.classList.remove("bad");
         postAll.disabled = true; postAll.textContent = "Posting\u2026";
         try {
