@@ -909,12 +909,11 @@
   @media (prefers-color-scheme: dark) { .mascot { --bn-edge: #b3a3e6; } }
   .mascot-btn {
     appearance: none; border: 0; background: none; padding: 0; cursor: pointer; display: block;
-    width: 96px; height: 125px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .28));
+    width: 92px; height: 184px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .28));
   }
   .mascot-btn:focus-visible { outline: 3px solid var(--jade); outline-offset: 2px; border-radius: 14px; }
   .mascot-btn img {
-    display: block; width: 100%; height: 100%; object-fit: cover;
-    border-radius: 18px; border: 3px solid var(--card); background: var(--card);
+    display: block; width: 100%; height: 100%; object-fit: contain;
     transform-origin: 50% 100%; animation: bn-bob 3.4s ease-in-out infinite;
   }
   .mascot.talking .mascot-btn img { animation: bn-bob 3.4s ease-in-out infinite, bn-tilt .9s ease-in-out 1; }
@@ -926,7 +925,7 @@
 
   /* the speech bubble: a hard offset shadow and a tail, like the reference */
   .mascot-bubble {
-    position: absolute; left: 6px; bottom: 136px;
+    position: absolute; left: 6px; bottom: 192px;
     width: max-content; max-width: min(340px, calc(100vw - 40px));
     background: var(--card); color: var(--ink);
     border: 2px solid var(--bn-edge); border-radius: 14px;
@@ -963,8 +962,8 @@
 
   @media (max-width: 620px) {
     .mascot { left: 10px; }
-    .mascot-btn { width: 66px; height: 86px; }
-    .mascot-bubble { bottom: 97px; }
+    .mascot-btn { width: 64px; height: 128px; }
+    .mascot-bubble { bottom: 136px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .mascot-btn img, .mascot-bubble { animation: none !important; }
