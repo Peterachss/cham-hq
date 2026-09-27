@@ -17,13 +17,19 @@
 #   stay awake         keeps the Mac from sleeping while it's plugged in
 # Each restarts on its own if it stops. Run this script again any time
 # to repair or update; run it with --remove to take everything off.
+#
+# Add --with-wrap to also run cham_summarizer's 9pm chat wrap here:
+#     curl -fsSL https://raw.githubusercontent.com/Peterachss/cham-hq/main/scripts/setup_mac.sh | bash -s -- --with-wrap
+# It installs a browser for the bot, opens a window ONCE for someone to
+# sign the cham_summarizer Instagram account in, and adds a 9pm job.
 # ---------------------------------------------------------------------
 set -euo pipefail
 REPO="$HOME/cham-hq"
 HQ="$HOME/.cham-hq"
 LA="$HOME/Library/LaunchAgents"
 UIDN="$(id -u)"
-JOBS="push announce finance backup update awake"
+JOBS="push announce finance backup update awake wrap"
+WRAP=0; [ "${1:-}" = "--with-wrap" ] && WRAP=1
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 if [ "${1:-}" = "--remove" ]; then
@@ -90,6 +96,20 @@ job finance  "$(S "$PY" "$REPO/scripts/sync_finance.py")"          '<key>StartIn
 job backup   "$(S "$PY" "$REPO/scripts/backup.py")"                '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>10</integer></dict>'
 job update   "$(S /bin/sh -c "cd '$REPO' && git pull --quiet")"    '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>7</integer></dict>'
 job awake    "$(S /usr/bin/caffeinate -s)"                         '<key>KeepAlive</key><true/><key>RunAtLoad</key><true/>'
+
+if [ "$WRAP" = 1 ]; then
+  say "+    cham_summarizer (9pm chat wrap)"
+  "$PY" -m pip install --user --upgrade --quiet --disable-pip-version-check playwright
+  "$PY" -m playwright install chromium >/dev/null
+  if [ ! -f "$HQ/ig-signed-in" ]; then
+    echo "A browser window opens now. Sign in to the cham_summarizer Instagram account"
+    echo "in it - the script notices by itself when you're in (it waits up to 15 minutes)."
+    (cd "$REPO" && "$PY" scripts/ig_wrap.py --login)
+  else
+    echo "  the bot is already signed in on this Mac"
+  fi
+  job wrap "$(S "$PY" "$REPO/scripts/ig_wrap.py")" '<key>StartCalendarInterval</key><dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>'
+fi
 
 say "5/5  First check"
 "$PY" "$REPO/scripts/push.py" --dry-run 2>&1 | tail -2
