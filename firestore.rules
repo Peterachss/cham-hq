@@ -95,6 +95,31 @@ service cloud.firestore {
       allow create:               if false;
     }
 
+    // The short version of tonight's wrap, for the Instagram group chat.
+    // An admin approving the wrap files it as "pending" (one per night);
+    // the sender on the computer with the Instagram bot posts it and marks
+    // it sent. Admins may cancel one still waiting, or try a failed one
+    // again - never mark one sent or edit what it says.
+    match /outbox/{msgId} {
+      function m() { return request.resource.data; }
+      allow read:   if isMember();
+      allow create: if isAdmin()
+                    && m().keys().hasOnly(['kind', 'date', 'text', 'by', 'byName', 'createdBy', 'status', 'createdAt'])
+                    && m().kind == 'nightly'
+                    && m().date is string
+                    && msgId == 'nightly-' + m().date
+                    && m().status == 'pending'
+                    && m().by == me().personKey
+                    && m().createdBy == email()
+                    && m().text is string && m().text.size() > 0 && m().text.size() <= 1000
+                    && m().createdAt == request.time;
+      allow update: if isAdmin()
+                    && m().diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'updatedBy'])
+                    && ((resource.data.status == 'pending' && m().status == 'cancelled')
+                     || (resource.data.status == 'failed' && m().status == 'pending'));
+      allow delete: if false;
+    }
+
     // The Announce box, and Nudge on a job. Admins file a message under
     // their own name as "pending"; the sender (service account) pushes it -
     // to everyone, or for a nudge (with "to") to that one person - and marks

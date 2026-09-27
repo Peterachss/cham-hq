@@ -15,6 +15,8 @@ last one and tells the right people, once:
   sponsor follow-up  -> whoever owns that sponsor, on the day it is due
   announcements      -> everyone: anything an admin typed into the Announce
                         box that the always-on watcher (announce.py) missed
+  group chat         -> an approved wrap's short version, if the watcher
+                        missed it (only where the Instagram bot is signed in)
   Monday morning     -> everyone: Judy's weekly report - officer of the
                         week, who is most behind, what is due this week
 
@@ -342,6 +344,8 @@ HEALTH = {
     "backup":   (50, True,  "The nightly backup"),
     "chatwrap": (50, True,  "The 9pm chat wrap"),
     "announce": (0.5, False, "Instant announcements on Peter's laptop"),
+    # runs only when a wrap is approved, so it is never "late" - only failing
+    "groupchat": (24 * 365, True, "Posting to the group chat"),
 }
 
 
@@ -630,6 +634,11 @@ def main():
         announce.send_pending(db, key, args.dry_run, say=log)
     except Exception as e:
         log(f"  announcements: {type(e).__name__}: {e}")
+    try:
+        import announce
+        announce.send_outbox(db, args.dry_run, say=log)     # only does anything where the Instagram bot lives
+    except Exception as e:
+        log(f"  group chat: {type(e).__name__}: {e}")
     if now.hour in MORNING:
         morning(db, P, by_key, subs, meta, today)
         if today.weekday() == 0 or args.weekly_now:

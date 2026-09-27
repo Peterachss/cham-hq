@@ -23,13 +23,21 @@ and sentTo says how many, so the site can tell them.
 
 A message is claimed in a transaction before sending, so two senders
 running at once can never push the same announcement twice.
+
+The group chat: when an admin approves the 9pm wrap with "Also post to the
+group chat" ticked, the site files a short version in /outbox. On the
+computer where the Instagram bot is signed in (ig_wrap.py --login), this
+posts it with ig_send.py - once, claimed the same way - and marks it sent
+or failed. Other computers, and GitHub, leave it alone.
 """
 
 import argparse
 import datetime as dt
 import os
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -42,6 +50,12 @@ from google.cloud import firestore  # noqa: E402
 from google.cloud.firestore_v1.base_query import FieldFilter  # noqa: E402
 
 LOCK_PORT = 47631        # one watcher per computer: the second one to start just exits
+IG_READY = os.path.join(push.HOME, "ig-signed-in")     # written by ig_wrap.py --login
+IG_SEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ig_send.py")
+# what ig_send.py's exit codes mean, in words for the site
+IG_FAIL = {2: "the Instagram bot is signed out - run ig_wrap.py --login",
+           3: "couldn't find the message box (Instagram may have changed)",
+           4: "pressed send but couldn't confirm it arrived - check the chat before trying again"}
 
 
 def log(msg):
@@ -109,6 +123,69 @@ def send_pending(db, key, dry=False, say=log):
     return n
 
 
+def can_post_to_chat():
+    """Only the computer with the Instagram bot signed in posts to the chat."""
+    return os.path.exists(IG_READY)
+
+
+def ig_send(text):
+    """Run ig_send.py on this text. Returns (ok, message). It sends at most
+    once and never retries; a message already in the chat counts as sent."""
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="cham-chat-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        try:
+            r = subprocess.run([sys.executable, IG_SEND, "--file", path], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=240, creationflags=flags, env=env)
+        except subprocess.TimeoutExpired:
+            return False, "timed out after 4 minutes - check the chat before trying again"
+        out = (r.stdout or "").strip().splitlines()
+        if r.returncode == 0:
+            return True, "already in the chat" if any("already in the chat" in x for x in out) else "sent"
+        return False, IG_FAIL.get(r.returncode, "crashed (" + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:100] + ")")
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def send_outbox(db, dry=False, say=log, send=ig_send):
+    """Post every group chat message waiting in /outbox. Returns how many went."""
+    if not can_post_to_chat():
+        return 0
+    # one claimed but never finished (the computer went off mid-send): say so, don't guess
+    for d in db.collection("outbox").where(filter=FieldFilter("status", "==", "sending")).stream():
+        at = (d.to_dict() or {}).get("claimedAt")
+        if at and (dt.datetime.now(dt.timezone.utc) - at).total_seconds() > 900 and not dry:
+            d.reference.update({"status": "failed", "error": "the sender stopped halfway - check the chat before trying again"})
+    waiting = list(db.collection("outbox").where(filter=FieldFilter("status", "==", "pending")).stream())
+    n = 0
+    for d in sorted(waiting, key=lambda d: str((d.to_dict() or {}).get("createdAt") or "")):
+        m = d.to_dict() or {}
+        text = str(m.get("text") or "").strip()[:1000]
+        if not text:
+            continue
+        if dry:
+            say(f"[dry] would post to the group chat: {text.splitlines()[0][:60]}")
+            continue
+        if not _claim(db.transaction(), d.reference):
+            continue                                    # the other computer got it first
+        say(f"group chat: posting {d.id}")
+        ok, why = send(text)
+        if ok:
+            d.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP, "error": ""})
+            n += 1
+        else:
+            d.reference.update({"status": "failed", "failedAt": firestore.SERVER_TIMESTAMP, "error": why})
+        say(f"group chat: {d.id} {'sent' if ok else 'FAILED'} ({why})")
+        status.beat("groupchat", ok, ("posted " + (m.get("date") or "")) if ok else why, db)
+    return n
+
+
 def watch(db, key):
     try:
         lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -120,15 +197,29 @@ def watch(db, key):
 
     wake = threading.Event()
     q = db.collection("announcements").where(filter=FieldFilter("status", "==", "pending"))
+    oq = db.collection("outbox").where(filter=FieldFilter("status", "==", "pending"))
     listener = None
+    outbox = None
     last_ok = 0.0
-    log("watching for announcements")
+    log("watching for announcements" + (" and group chat posts" if can_post_to_chat() else ""))
+
+    def stop_listening():
+        for x in (listener, outbox):
+            try:
+                if x is not None:
+                    x.unsubscribe()
+            except Exception:
+                pass
+
     while True:
         if listener is None:
             try:
                 listener = q.on_snapshot(lambda docs, changes, t: wake.set())
+                outbox = oq.on_snapshot(lambda docs, changes, t: wake.set()) if can_post_to_chat() else None
             except Exception as e:
                 log(f"could not listen ({type(e).__name__}: {e}); retrying in a minute")
+                stop_listening()
+                listener = outbox = None
                 time.sleep(60)
                 continue
         wake.wait(timeout=300)                          # a change, or a routine five-minute check
@@ -139,18 +230,16 @@ def watch(db, key):
             status.beat("announce", True, "watching", db)
         except Exception:
             log("send failed:\n" + traceback.format_exc())
-            try:
-                listener.unsubscribe()
-            except Exception:
-                pass
-            listener = None                             # rebuild the listener next time round
+            stop_listening()
+            listener = outbox = None                    # rebuild the listeners next time round
             time.sleep(20)
+        try:
+            send_outbox(db)                             # does nothing unless the Instagram bot lives here
+        except Exception:
+            log("group chat post failed:\n" + traceback.format_exc())
         if time.time() - last_ok > 1800 and listener is not None:
-            try:
-                listener.unsubscribe()                  # nothing has worked for half an hour: start clean
-            except Exception:
-                pass
-            listener = None
+            stop_listening()                            # nothing has worked for half an hour: start clean
+            listener = outbox = None
 
 
 def main():
@@ -167,6 +256,10 @@ def main():
     else:
         n = send_pending(db, key, args.dry_run)
         log(f"{n} announcement(s) sent" if n else "nothing waiting")
+        if can_post_to_chat():
+            g = send_outbox(db, args.dry_run)
+            if g:
+                log(f"{g} group chat message(s) posted")
 
 
 if __name__ == "__main__":

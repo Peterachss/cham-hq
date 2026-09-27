@@ -71,7 +71,7 @@ if (!CONFIGURED) {
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
-  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null;
+  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null, unsubOutbox = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   /* While Firebase restores a saved login (a few seconds on a slow
@@ -221,6 +221,7 @@ if (!CONFIGURED) {
     if (unsubSys) { unsubSys(); unsubSys = null; }
     if (unsubOnboard) { unsubOnboard(); unsubOnboard = null; }
     if (unsubEvents) { unsubEvents(); unsubEvents = null; }
+    if (unsubOutbox) { unsubOutbox(); unsubOutbox = null; }
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -498,6 +499,20 @@ if (!CONFIGURED) {
         },
         (err) => { console.error("Chạm HQ: lost the chat drafts", err); window.ChamHQ.setDrafts(null); });
 
+      // the last few group chat posts, so an admin sees whether tonight's went
+      unsubOutbox = onSnapshot(query(collection(db, "outbox"), orderBy("createdAt", "desc"), limit(3)),
+        (qs) => {
+          const rows = [];
+          qs.forEach((d) => {
+            const v = d.data();
+            rows.push({ id: d.id, date: v.date || "", text: v.text || "", status: v.status || "pending", error: v.error || "",
+              at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : new Date(),
+              sentAt: v.sentAt && v.sentAt.toDate ? v.sentAt.toDate() : null });
+          });
+          window.ChamHQ.setOutbox(rows);
+        },
+        (err) => { console.error("Chạm HQ: lost the group chat outbox", err); window.ChamHQ.setOutbox(null); });
+
       // the last few announcements, so the sender sees "Sent to 4 people"
       unsubAnn = onSnapshot(query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(4)),
         (qs) => {
@@ -677,6 +692,18 @@ if (!CONFIGURED) {
     async setDraftStatus(id, status) {
       await updateDoc(doc(db, "chatDrafts", id), { status, reviewedAt: serverTimestamp(),
         reviewedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
+    },
+    /* the short version of tonight's wrap, for the Instagram group chat -
+       one per night, sent by the computer that has the bot signed in */
+    async queueGroupChat(m) {
+      await setDoc(doc(db, "outbox", "nightly-" + m.date), {
+        kind: "nightly", date: m.date, text: m.text, by: m.by, byName: m.byName || "", status: "pending",
+        createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
+      });
+    },
+    async setOutboxStatus(id, status) {
+      await updateDoc(doc(db, "outbox", id), { status, updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
     },
     async deletePushSub(endpoint) {
       await deleteDoc(doc(db, "pushSubs", await subId(endpoint)));

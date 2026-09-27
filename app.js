@@ -126,7 +126,7 @@
   let DRAFTS = null;
   let ANNOUNCES = null;
   let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
-  let SYS = null, OB = null;
+  let SYS = null, OB = null, OUTBOX = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -217,6 +217,7 @@
       return ADMIN_ON;
     },
     setAnnouncements(rows) { ANNOUNCES = rows; renderAnnounce(); },
+    setOutbox(rows) { OUTBOX = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderDrafts(); },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
   };
@@ -824,13 +825,21 @@
    * not sit under people's names. It lands here instead, with chatter
    * already un-ticked, and one tap posts the rest.
    * ------------------------------------------------------------------ */
+  /* A wrap card is kept between renders (tab switches, live updates), so
+     the ticks and edits an admin has made are never wiped mid-review. */
+  const DRAFT_CARDS = new Map();          // draft id -> { sig, node }
   function renderDrafts() {
     const box = $("chat-drafts");
     if (!box) return;
-    box.replaceChildren();
-    if (!SESSION || !SESSION.admin || !DRAFTS || !DRAFTS.length || !window.ChamLive) return;
+    box.replaceChildren(outboxLine());
+    if (!SESSION || !SESSION.admin || !DRAFTS || !DRAFTS.length || !window.ChamLive) { DRAFT_CARDS.clear(); return; }
 
+    const live = new Set(DRAFTS.map((d) => d.id));
+    [...DRAFT_CARDS.keys()].forEach((id) => { if (!live.has(id)) DRAFT_CARDS.delete(id); });
     DRAFTS.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach((d) => {
+      const sig = JSON.stringify(d.lines);
+      const had = DRAFT_CARDS.get(d.id);
+      if (had && had.sig === sig) { box.appendChild(had.node); return; }
       const rows = el("div", { class: "drafts" });
       d.lines.forEach((ln) => {
         const keep = el("input", { type: "checkbox", "aria-label": "Post this line" });
@@ -848,24 +857,49 @@
 
       const msg = el("span", { class: "ad-msg" });
       const post = el("button", { class: "au-go", type: "button" });
+
+      /* the short version for the Instagram group chat: shown before
+         anything goes, ticked by default, and editable. It follows the
+         ticks above until you type in it yourself. */
+      const gcOn = el("input", { type: "checkbox", checked: true });
+      const gcText = el("textarea", { class: "ad-area gc-text", rows: "6", maxlength: "1000", "aria-label": "Message for the group chat" });
+      let gcEdited = false;
+      gcText.addEventListener("input", () => { gcEdited = true; });
+      gcOn.addEventListener("change", () => { gcText.hidden = !gcOn.checked; });
+      const ticked = () => [...rows.children].map((r) => r._read()).filter((r) => r.keep && r.text);
       const count = () => {
-        const n = [...rows.children].filter((r) => r._read().keep && r._read().text).length;
+        const n = ticked().length;
         post.textContent = n ? "Post " + n + " line" + (n === 1 ? "" : "s") : "Nothing ticked";
         post.disabled = !n;
+        if (!gcEdited) gcText.value = chatShort(d.date, ticked());
       };
+      rows.addEventListener("input", count);
       count();
 
       post.addEventListener("click", async () => {
-        const keep = [...rows.children].map((r) => r._read()).filter((r) => r.keep && r.text);
+        const keep = ticked();
+        const gc = gcOn.checked ? gcText.value.trim() : "";
         post.disabled = true; post.textContent = "Posting\u2026";
         try {
           await window.ChamLive.addUpdates(keep.map((r) => ({ date: d.date, who: r.who, text: r.text, key: r.key, tag: "From the chat" })));
-          await window.ChamLive.setDraftStatus(d.id, "posted");
         } catch (err) {
           msg.textContent = "Did not post. " + (err.code || err.message);
           msg.classList.add("bad");
           count();
+          return;
         }
+        /* the feed is up whatever happens next; the group chat is extra */
+        if (gc) {
+          try {
+            const me = SESSION.personKey;
+            await window.ChamLive.queueGroupChat({ date: d.date, text: gc, by: me, byName: PEOPLE[me] ? PEOPLE[me].name : me });
+            toast("Posted. The group chat message is queued");
+          } catch (err) {
+            toast("Posted to Updates, but the group chat message didn\u2019t queue. " + (err.code || err.message));
+          }
+        } else toast("Posted to Updates");
+        try { await window.ChamLive.setDraftStatus(d.id, "posted"); }
+        catch (err) { msg.textContent = "Posted, but couldn\u2019t close the wrap. " + (err.code || err.message); msg.classList.add("bad"); }
       });
       const drop = el("button", { class: "act ghost", type: "button", text: "Discard it",
         onclick: async (e) => {
@@ -875,15 +909,58 @@
         } });
 
       const kept = d.lines.filter((l) => l.keep !== false).length;
-      box.appendChild(el("section", { class: "admin chatwrap" }, [
+      const card = el("section", { class: "admin chatwrap" }, [
         el("div", { class: "cw-head" }, [
           el("h3", { class: "grp", text: "Chat wrap for " + pretty(d.date) }),
           el("span", { class: "cw-sub", text: d.lines.length + " lines read, " + kept + " look worth keeping. Nothing is posted until you say." })
         ]),
         rows,
+        el("div", { class: "gc" }, [
+          el("label", { class: "sp-lbl gc-on" }, [gcOn, document.createTextNode(" Also post to the group chat")]),
+          gcText
+        ]),
         el("div", { class: "adrow" }, [post, drop, msg])
-      ]));
+      ]);
+      DRAFT_CARDS.set(d.id, { sig, node: card });
+      box.appendChild(card);
     });
+  }
+
+  /* 2 to 4 lines for the group chat: the ones marked important first, then
+     anything with a date, a number or a decision in it, in the order they
+     happened, and a pointer to the full list. */
+  const SITE_LINK = "peterachss.github.io/cham-hq";
+  function chatShort(date, lines) {
+    const plain = (t) => String(t).replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+    const cut = (t) => (t.length > 140 ? t.slice(0, 139).trimEnd() + "\u2026" : t);
+    const pick = lines.map((l, i) => ({ ...l, i, score: (l.key ? 2 : 0) + (KEEP_SIGNAL.test(l.text) ? 1 : 0) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i).slice(0, 4).sort((a, b) => a.i - b.i);
+    if (!pick.length) return "";
+    return ["\ud83e\uddfe Ch\u1ea1m on " + pretty(date)]
+      .concat(pick.map((l) => "\u2022 " + cut((l.who && l.who !== "team" && PEOPLE[l.who] ? PEOPLE[l.who].name + ": " : "") + plain(l.text))))
+      .concat(["Updates tab: " + SITE_LINK]).join("\n");
+  }
+
+  /* After Post: whether the group chat message went. The sender on the
+     computer with the Instagram bot picks it up; this says what happened. */
+  function outboxLine() {
+    if (!SESSION || !SESSION.admin || !OUTBOX) return null;
+    const o = OUTBOX.find((x) => x.status !== "cancelled" && Date.now() - x.at.getTime() < 36 * 36e5
+      && !(x.status === "sent" && Date.now() - (x.sentAt || x.at).getTime() > 12 * 36e5));
+    if (!o) return null;
+    const when = pretty(o.date);
+    const btn = (label, status, ask) => el("button", { class: "act ghost", type: "button", text: label, onclick: async (e) => {
+      if (ask && !tapTwice(e.currentTarget, ask)) return;
+      e.currentTarget.disabled = true;
+      try { await window.ChamLive.setOutboxStatus(o.id, status); }
+      catch (err) { toast("Didn\u2019t save. " + (err.code || err.message)); e.currentTarget.disabled = false; }
+    } });
+    const [icon, text, act] =
+        o.status === "sent"    ? ["\u2713", "Group chat message for " + when + " sent", null]
+      : o.status === "sending" ? ["\ud83d\udce8", "Posting the group chat message for " + when + "\u2026", null]
+      : o.status === "failed"  ? ["\u26a0\ufe0f", "The group chat message for " + when + " didn\u2019t go" + (o.error ? ": " + o.error : ""), btn("Try again", "pending")]
+      : ["\ud83d\udce8", "Group chat message for " + when + " is waiting for the laptop with the Instagram bot", btn("Cancel", "cancelled", "Tap again to cancel")];
+    return el("div", { class: "gc-status " + o.status }, [el("span", { "aria-hidden": "true", text: icon }), el("span", { text }), act]);
   }
 
   /* ------------------------------------------------------------------ *
@@ -1179,7 +1256,9 @@
       ["Instant announcements", "Mac or Windows", J.announce && J.announce.at, 0.5, J.announce, "laptop"],
       ["Finance sheet sync", "hourly", J.finance && J.finance.at, 6, J.finance],
       ["Nightly backup", "2am", J.backup && J.backup.at, 50, J.backup],
-      ["9pm chat wrap", "Windows laptop", J.chatwrap && J.chatwrap.at, 50, J.chatwrap]
+      ["9pm chat wrap", "Windows laptop", J.chatwrap && J.chatwrap.at, 50, J.chatwrap],
+      // only runs when an admin approves a wrap, so a long gap is normal; failures still show
+      ["Group chat posts", "after a wrap is approved", J.groupchat && J.groupchat.at, 24 * 365, J.groupchat]
     ].map(([label, when, at, hours, j, kind]) => {
       const age = at ? (Date.now() - new Date(at).getTime()) / 36e5 : null;
       let state, text;

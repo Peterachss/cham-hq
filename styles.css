@@ -1375,3 +1375,14 @@
   .au-pending { font-size: 13px; color: var(--muted); }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .gate-spin, .au-spin { animation-duration: 3s; } }
+
+  /* the group chat version of tonight's wrap, and whether it went */
+  .gc { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .gc-on { font-weight: 600; font-size: 14px; color: var(--ink); }
+  .gc-text { font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
+  .gc-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; padding: 9px 12px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13.5px; color: var(--ink-2); }
+  .gc-status.sent { border-color: var(--jade); color: var(--jade); }
+  .gc-status.failed { border-color: var(--clay); background: var(--clay-soft); color: var(--clay); }
+  .gc-status > span:nth-child(2) { flex: 1 1 180px; min-width: 0; }
+  .gc-status .act { margin-left: auto; }

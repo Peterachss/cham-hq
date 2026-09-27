@@ -46,6 +46,9 @@ async function seed() {
     await setDoc(doc(db, "onboarding", THUAN), { notify: false });
     await setDoc(doc(db, "sales", "s-open"), { name: "Ice cream sale", open: true, items: [{ id: "v", name: "Vanilla", price: 30000 }] });
     await setDoc(doc(db, "sales", "s-shut"), { name: "Bake sale", open: false, items: [{ id: "c", name: "Cookie", price: 15000 }] });
+    await setDoc(doc(db, "outbox", "nightly-2026-09-26"), { kind: "nightly", date: "2026-09-26", text: "hi", by: "bach", status: "pending" });
+    await setDoc(doc(db, "outbox", "nightly-2026-09-20"), { kind: "nightly", date: "2026-09-20", text: "hi", by: "bach", status: "failed" });
+    await setDoc(doc(db, "outbox", "nightly-2026-09-19"), { kind: "nightly", date: "2026-09-19", text: "hi", by: "bach", status: "sent" });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
       code: "A7K2", paid: false, pickedUp: false, pushed: false });
   });
@@ -59,6 +62,9 @@ const ANN = (by, key, extra = {}) => ({ text: "Are we still doing the ice cream 
 
 const ORD = (extra = {}) => ({ sale: "s-open", name: "Minh", cls: "10A", contact: "", items: { v: 2 }, pay: "cash",
   note: "", code: "B3X9", paid: false, pickedUp: false, pushed: false, createdAt: serverTimestamp(), ...extra });
+
+const OUT = (by, key, extra = {}) => ({ kind: "nightly", date: "2026-09-27", text: "🧾 Chạm on Sun 27 Sep\n• Sale moved\nUpdates tab: peterachss.github.io/cham-hq",
+  by: key, byName: "x", createdBy: by, status: "pending", createdAt: serverTimestamp(), ...extra });
 
 const EXP = (by, extra = {}) => ({ kind: "out", amount: 250000, description: "Beads", category: "Events",
   status: "new", createdBy: by, receipt: "", ...extra });
@@ -221,6 +227,27 @@ const cases = [
   ["member cannot write someone's checklist",false, () => setDoc(doc(as(EMILY), "onboarding", THUAN), { notify: true })],
   ["admin nudges someone to turn them on",   true,  () => updateDoc(doc(as(BACH), "members", EMILY), { notifyNudge: { by: "bach", at: "2026-09-26" } })],
   ["member cannot nudge via member records", false, () => updateDoc(doc(as(EMILY), "members", THUAN), { notifyNudge: { by: "emily" } })],
+
+  // ---------------------------------------------------------------- group chat outbox
+  ["admin queues tonight's group chat post", true,  () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "bach"))],
+  ["member cannot queue a group chat post",  false, () => setDoc(doc(as(EMILY), "outbox/nightly-2026-09-27"), OUT(EMILY, "emily"))],
+  ["finance cannot queue one either",        false, () => setDoc(doc(as(THUAN), "outbox/nightly-2026-09-27"), OUT(THUAN, "thuan"))],
+  ["cannot queue one as someone else",       false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "peter"))],
+  ["cannot queue one already sent",          false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "bach", { status: "sent" }))],
+  ["one post per night: id must match date", false, () => setDoc(doc(as(BACH), "outbox/whatever"), OUT(BACH, "bach"))],
+  ["cannot queue a second one for a night",  false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-26"), OUT(BACH, "bach", { date: "2026-09-26" }))],
+  ["empty group chat post refused",          false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "bach", { text: "" }))],
+  ["over-long group chat post refused",      false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "bach", { text: "x".repeat(1001) }))],
+  ["no extra fields on a group chat post",   false, () => setDoc(doc(as(BACH), "outbox/nightly-2026-09-27"), OUT(BACH, "bach", { to: "someone" }))],
+  ["member reads the outbox",                true,  () => getDocs(collection(as(EMILY), "outbox"))],
+  ["stranger cannot read the outbox",        false, () => getDocs(collection(as(STRANGER), "outbox"))],
+  ["admin cancels one still waiting",        true,  () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-26"), { status: "cancelled", updatedAt: serverTimestamp(), updatedBy: "peter" })],
+  ["member cannot cancel one",               false, () => updateDoc(doc(as(EMILY), "outbox/nightly-2026-09-26"), { status: "cancelled" })],
+  ["admin cannot mark one sent",             false, () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-26"), { status: "sent" })],
+  ["admin cannot change what it says",       false, () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-26"), { text: "something else" })],
+  ["admin tries a failed one again",         true,  () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-20"), { status: "pending", updatedAt: serverTimestamp(), updatedBy: "peter" })],
+  ["cannot re-send one that went",           false, () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-19"), { status: "pending" })],
+  ["nobody deletes from the outbox",         false, () => deleteDoc(doc(as(PETER), "outbox/nightly-2026-09-26"))],
 ];
 
 let failed = 0;
