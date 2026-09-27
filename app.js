@@ -169,7 +169,7 @@
       render();
     },
     setEventsDb(rows) { EVDB = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderCountdown(); },
-    setSysStatus(d) { SYS = d; if (S.view === "updates") renderSystem(); },
+    setSysStatus(d) { SYS = d; if (S.view === "updates") { renderSystem(); renderToolbar(); } },
     setOnboarding(d) {
       const first = OB === null;
       OB = d || {};
@@ -177,7 +177,7 @@
       if (first && !OB.dismissed && obSteps().some((x) => !x.done) && !location.hash) setView("me");
       else if (S.view === "me") renderMe();
     },
-    setPushStatus(d) { PUSHSTATUS = d; if (S.view === "updates") renderWhosOn(); },
+    setPushStatus(d) { PUSHSTATUS = d; if (S.view === "updates") { renderWhosOn(); renderToolbar(); } },
     setSponsors(rows) { SPONSORS = Array.isArray(rows) ? rows : null; render(); },
     setMeetings(rows) { MEETINGS = Array.isArray(rows) ? rows : null; if (S.view === "calendar") { renderMeetings(); renderCalendar(); } },
     setActivities(rows) { ACTS = Array.isArray(rows) ? rows : null; if (S.view === "tracker") renderImpact(); },
@@ -195,23 +195,47 @@
       render();
     },
     setSession(s) {
-      SESSION = s;
+      // a copy, so switching Admin mode off never changes what live.js subscribed to
+      SESSION = s ? { ...s, _admin: s.admin === true, _sysadmin: s.sysadmin === true } : null;
+      if (SESSION) applyAdminMode();
       pushState = null; pushSavedThisSession = false;
       if (!s) closeMoneySheet();
-      /* Panels are built once and then left alone, so they have to be torn
-         down when the person changes - otherwise signing in after somebody
-         else leaves you looking at their buttons. */
-      ["task-filters","status-filters","upd-filters","photo-filters",
-       "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings","whos-on","me","system","countdown"].forEach((id) => {
-        const n = $(id); if (n) n.replaceChildren();
-      });
+      resetPanels();
       render();
       if (s && pendingLog) setTimeout(openMoneySheet, 0);
+    },
+    /* Admin mode: an admin can switch their admin tools off and see the
+       site exactly as a member does. Remembered on this device. */
+    adminModeOn: () => ADMIN_ON,
+    toggleAdminMode() {
+      ADMIN_ON = !ADMIN_ON;
+      try { localStorage.setItem("cham-admin-mode", ADMIN_ON ? "on" : "off"); } catch (e) {}
+      if (SESSION) applyAdminMode();
+      resetPanels();
+      renderNow();
+      toast(ADMIN_ON ? "Admin mode on" : "Admin mode off \u2014 you\u2019re seeing what members see");
+      return ADMIN_ON;
     },
     setAnnouncements(rows) { ANNOUNCES = rows; renderAnnounce(); },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
   };
+
+  let ADMIN_ON = (() => { try { return localStorage.getItem("cham-admin-mode") !== "off"; } catch (e) { return true; } })();
+  function applyAdminMode() {
+    SESSION.admin = SESSION._admin && ADMIN_ON;
+    SESSION.sysadmin = SESSION._sysadmin && ADMIN_ON;
+  }
+  /* Panels are built once and then left alone, so they have to be torn
+     down when the person (or their Admin mode) changes - otherwise you'd
+     keep looking at buttons you shouldn't have. */
+  function resetPanels() {
+    ["task-filters","status-filters","upd-filters","photo-filters",
+     "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings",
+     "whos-on","me","system","countdown","tool-bar"].forEach((id) => {
+      const n = $(id); if (n) n.replaceChildren();
+    });
+  }
 
   /* ------------------------------------------------------------------ *
    * the feed writes itself
@@ -505,7 +529,7 @@
     renderGlance();
     renderNotify();
     renderFab();
-    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderFeed(); renderUpdateAdmin(); }
+    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderFeed(); renderUpdateAdmin(); renderToolbar(); }
     if (S.view === "me") renderMe();
     if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
     if (S.view === "sponsors") renderSponsors();
@@ -1249,6 +1273,44 @@
       sec("This device", "", [el("p", { class: "an-sub", text: pushState === "on" ? "\ud83d\udd14 Notifications are on here. Use \u201cSend me a test\u201d in the green bar at the top to check."
         : "\ud83d\udd15 Notifications are off on this device \u2014 turn them on in the bar at the top so you hear about new jobs and nudges." })])
     );
+  }
+
+  /* ------------------------------------------------------------------ *
+   * The Updates toolbar: one row of buttons, and only the tool you tap
+   * opens underneath. Members get "Post an update"; admins also get
+   * Announce and the notification list; whoever runs the background jobs
+   * gets their status too.
+   * ------------------------------------------------------------------ */
+  let TOOL_OPEN = (() => { try { return localStorage.getItem("cham-tool") || null; } catch (e) { return null; } })();
+  function renderToolbar() {
+    const bar = $("tool-bar");
+    if (!bar) return;
+    const avail = (id) => { const e = $(id); return e && !e.hidden; };
+    const ppl = PUSHSTATUS && PUSHSTATUS.people ? Object.entries(PUSHSTATUS.people).filter(([k]) => PEOPLE[k] && !/^Left /.test(PEOPLE[k].role || "")) : [];
+    const onN = ppl.filter(([, p]) => p.devices.length).length;
+    const sysBad = $("system") && /attention/.test($("system").textContent || "");
+    const tools = [
+      ["post", "\u270d\ufe0f Post an update", avail("upd-admin"), ""],
+      ["announce", "\ud83d\udce3 Announce", avail("announce"), ""],
+      ["notify", "\ud83d\udd14 Notifications", avail("whos-on"), ppl.length ? onN + "/" + ppl.length : ""],
+      ["system", sysBad ? "\u26a0\ufe0f Background jobs" : "\u2699\ufe0f Background jobs", avail("system"), sysBad ? "needs a look" : "ok"]
+    ].filter((t) => t[2]);
+    if (TOOL_OPEN && !tools.some((t) => t[0] === TOOL_OPEN)) TOOL_OPEN = null;
+    $("upd-tools").hidden = !tools.length;
+    bar.replaceChildren(...tools.map(([k, label, , badge]) => el("button", {
+      class: "tool-btn" + (TOOL_OPEN === k ? " on" : "") + (k === "system" && sysBad ? " bad" : ""), type: "button",
+      "aria-pressed": String(TOOL_OPEN === k),
+      onclick: () => {
+        TOOL_OPEN = TOOL_OPEN === k ? null : k;
+        try { TOOL_OPEN ? localStorage.setItem("cham-tool", TOOL_OPEN) : localStorage.removeItem("cham-tool"); } catch (e) {}
+        renderToolbar();
+      }
+    }, [document.createTextNode(label), badge ? el("span", { class: "tool-badge", text: badge }) : null])));
+    document.querySelectorAll("#upd-tools .tool").forEach((t) => {
+      const open = t.dataset.tool === TOOL_OPEN;
+      t.classList.toggle("open", open);
+      if (open) t.querySelectorAll("details").forEach((d) => { d.open = true; });   // opened on purpose: show it all
+    });
   }
 
   function renderAnnounce() {

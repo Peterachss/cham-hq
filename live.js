@@ -123,6 +123,17 @@ if (!CONFIGURED) {
         el("b", { text: session.name }),
         el("span", { class: "au-sub", text: session.admin ? "admin" : (session.role || "member") })
       ]),
+      session.admin ? (() => {
+        const on = window.ChamHQ.adminModeOn();
+        const b = el("button", { class: "au-mode" + (on ? " on" : ""), type: "button", role: "switch", "aria-checked": String(on),
+          title: "Switch your admin tools off to see the site the way members do",
+          onclick: () => {
+            const now = window.ChamHQ.toggleAdminMode();
+            b.classList.toggle("on", now); b.setAttribute("aria-checked", String(now));
+            b.lastChild.textContent = now ? "Admin mode on" : "Admin mode off";
+          } }, [el("span", { class: "au-knob", "aria-hidden": "true" }), el("span", { text: on ? "Admin mode on" : "Admin mode off" })]);
+        return b;
+      })() : null,
       el("button", { class: "au-link", text: "Change password", onclick: togglePasswordForm }),
       el("button", { class: "au-link", text: "Sign out", onclick: () => signOut(auth) })
     );
