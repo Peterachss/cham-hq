@@ -467,6 +467,223 @@ def summarise(cfg, rows):
 
 
 # --------------------------------------------------------------------------
+# requests from the chat
+#
+# Simple asks in the day's messages - "move the sale to the 7th", "mark my
+# merch job done", "can someone make the posters a job for Thy" - become
+# proposed changes in /requests. They are only ever proposals: nothing
+# changes until an admin taps Apply on the Updates tab. The patterns are
+# deliberately narrow; a missed request costs nothing, a wrong one costs
+# an admin one tap to dismiss.
+# --------------------------------------------------------------------------
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+DAYS_OF_WEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+MONTH_RE = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+WEEKDAY_RE = r"(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(day|nesday|rsday|urday|sday)?"
+WORD_STOP = {"my", "the", "a", "an", "job", "task", "jobs", "tasks", "as", "is", "it", "to", "for", "and", "of", "on",
+             "with", "done", "finished", "complete", "completed", "mark", "please", "pls", "can", "someone", "just",
+             "now", "this", "that", "our", "your", "their", "his", "her", "one", "thing", "chạm", "cham"}
+STATUS_WORDS = {"done": "done", "finished": "done", "complete": "done", "completed": "done",
+                "blocked": "blocked", "stuck": "blocked", "started": "doing", "doing": "doing", "in progress": "doing"}
+
+
+def _safe_date(y, m, d):
+    try:
+        return dt.date(y, m, d)
+    except ValueError:
+        return None
+
+
+def parse_date(text, today):
+    """The first date named in a bit of chat, as YYYY-MM-DD, or None.
+    Understands tomorrow, weekdays (the next one after today), 7/10 (day
+    first, as in Vietnam), 7 Oct / Oct 7th, and "the 7th" (this month if
+    it hasn't passed, otherwise next month)."""
+    t = text.lower()
+    if re.search(r"\btomorrow\b", t):
+        return (today + dt.timedelta(days=1)).isoformat()
+    if re.search(r"\b(today|tonight)\b", t):
+        return today.isoformat()
+    m = re.search(r"\b(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?\b", t)
+    if m:
+        y = int(m.group(3)) if m.group(3) else today.year
+        y = y + 2000 if y < 100 else y
+        d = _safe_date(y, int(m.group(2)), int(m.group(1)))
+        if d and not m.group(3) and d < today - dt.timedelta(days=60):
+            d = _safe_date(y + 1, d.month, d.day)
+        if d:
+            return d.isoformat()
+    m = (re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?" + MONTH_RE, t)
+         or re.search(r"\b" + MONTH_RE + r"\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b", t))
+    if m:
+        a, b = m.group(1), m.group(2)
+        day, mon = (int(a), b) if a.isdigit() else (int(b), a)
+        d = _safe_date(today.year, MONTHS.index(mon[:3]) + 1, day)
+        if d and d < today - dt.timedelta(days=60):
+            d = _safe_date(today.year + 1, d.month, d.day)
+        if d:
+            return d.isoformat()
+    m = re.search(r"\b" + WEEKDAY_RE + r"\b", t)
+    if m:
+        want = DAYS_OF_WEEK.index(m.group(1)[:3])
+        ahead = (want - today.weekday()) % 7 or 7
+        return (today + dt.timedelta(days=ahead)).isoformat()
+    m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", t) or re.search(r"\bthe (\d{1,2})\b", t)
+    if m:
+        day = int(m.group(1))
+        d = _safe_date(today.year, today.month, day) if day >= today.day else None
+        if not d:
+            y, mo = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+            d = _safe_date(y, mo, day)
+        if d:
+            return d.isoformat()
+    return None
+
+
+def _words(t):
+    return [w for w in re.findall(f"[{LETTERS}0-9]+", t.lower()) if len(w) >= 3 and w not in WORD_STOP]
+
+
+def _same(a, b):
+    return a == b or (len(a) >= 4 and len(b) >= 4 and (a.startswith(b) or b.startswith(a)))
+
+
+def _overlap(phrase, title):
+    tw = _words(title)
+    return sum(1 for w in set(_words(phrase)) if any(_same(w, x) for x in tw))
+
+
+def _best(cands, score, tiebreak):
+    """The single best match, or None if nothing matches."""
+    scored = [(score(c), c) for c in cands]
+    scored = [x for x in scored if x[0] > 0]
+    if not scored:
+        return None
+    top = max(x[0] for x in scored)
+    tied = [c for n, c in scored if n == top]
+    return sorted(tied, key=tiebreak)[0] if tiebreak else (tied[0] if len(tied) == 1 else None)
+
+
+def _person(word, people, sender):
+    w = word.lower().strip(" .,:;!?'\"")
+    if w in ("me", "myself", "i"):
+        return sender
+    return who_is_this(w, people)
+
+
+def _clean_title(t):
+    t = re.sub(r"^(to|the job of|of)\s+", "", t.strip(), flags=re.I)
+    t = re.sub(r"\s*(please|pls|plz)\b.*$", "", t, flags=re.I).strip(" .,!?:;-")
+    return (t[:1].upper() + t[1:])[:120]
+
+
+def find_requests(rows, today, people, tasks, events):
+    """Chat rows ("Sender: message") -> proposed changes. Each is
+    {who, text, change, summary}; change is one of
+      {type: "event_date",  eventId, date}
+      {type: "task_status", taskId, status}
+      {type: "task_new",    who, title, due}"""
+    out, seen = [], set()
+    live_events = [e for e in events if (e.get("date") or "") >= (today - dt.timedelta(days=1)).isoformat()]
+    for row in rows:
+        m = re.match(r"^(.+?):\s+(.+)$", row)
+        if not m:
+            continue
+        sender = ALIASES().get(m.group(1).lower()) or who_is_this(m.group(1), people)
+        text = m.group(2).strip()
+        low = text.lower()
+        if not sender:
+            continue
+        req = None
+
+        # "move the sale to the 7th", "can we push the bake sale to friday"
+        mv = re.search(r"\b(move|moving|moved|push|pushing|pushed|postpone|postponing|postponed|reschedule|rescheduling|"
+                       r"rescheduled|change|changing|changed|shift|shifting|shifted)\b(.*?)\b(to|until|till)\b(.+)$", low)
+        if mv and live_events:
+            date = parse_date(mv.group(4), today)
+            ev = _best(live_events, lambda e: _overlap(mv.group(2), e.get("name", "")), lambda e: e.get("date") or "")
+            if date and ev and date != ev.get("date"):
+                req = {"type": "event_date", "eventId": ev["id"], "date": date}
+                summary = f"Move {ev.get('name')} from {ev.get('date')} to {date}"
+
+        # "mark my merch job done", "mark Emily's reel as finished"
+        if not req:
+            mk = re.search(r"\bmark\s+(.+?)\s+(?:as\s+)?(done|finished|complete|completed|blocked|stuck|started|in progress)\b", low)
+            fin = re.search(r"\bi(?:'ve| have|’ve)?\s+(?:just\s+)?(finished|completed)\s+(.+)$", low)
+            stk = re.search(r"\bi(?:'m| am|’m)\s+stuck\s+(?:on|with)\s+(.+)$", low)
+            hit = (mk and (mk.group(1), STATUS_WORDS[mk.group(2)])) or (fin and (fin.group(2), "done")) \
+                or (stk and (stk.group(1), "blocked"))
+            if hit:
+                phrase, status_ = hit
+                pos = re.match(r"^(\w+)'s\b", phrase) or re.match(r"^(\w+)’s\b", phrase)
+                owner = _person(pos.group(1), people, sender) if pos else sender
+                mine = [t for t in tasks if t.get("who") == owner and t.get("status") != status_ and t.get("status") != "done"]
+                t = _best(mine, lambda t: _overlap(phrase, t.get("title", "")), None)
+                if not t and not _words(phrase) and len(mine) == 1:
+                    t = mine[0]                                   # "mark my job done", and they only have one
+                if t:
+                    req = {"type": "task_status", "taskId": t["id"], "status": status_}
+                    summary = f"Mark {people.get(owner, owner)}'s \"{t.get('title')}\" {status_}"
+
+        # "can someone make the posters a job for Thy", "add a job for Emily: film the reel by friday"
+        if not req:
+            g = re.search(r"\bmake\s+(.+?)\s+(?:a|into a)\s+(?:job|task)\s+for\s+(\w+)(.*)$", text, re.I)
+            nj = g and (g.group(2), g.group(1) + g.group(3))
+            if not nj:
+                g = re.search(r"\b(?:add|make|create|new)\s+(?:a\s+)?(?:job|task)\s+for\s+(\w+)\s*(?::|-|to\b)\s*(.+)$", text, re.I)
+                nj = g and (g.group(1), g.group(2))
+            if not nj:
+                g = re.search(r"\bgive\s+(\w+)\s+(?:a|the)\s+(?:job|task)\s*(?::|-|to\b|of\b)?\s*(.+)$", text, re.I)
+                nj = g and (g.group(1), g.group(2))
+            if nj:
+                who = _person(nj[0], people, sender)
+                body = nj[1]
+                due = None
+                dm = re.search(r"\s+(?:by|due|before)\s+(.+)$", body, re.I)
+                if dm and parse_date(dm.group(1), today):
+                    due = parse_date(dm.group(1), today)
+                    body = body[:dm.start()]
+                title = _clean_title(body)
+                if who and len(title) >= 3:
+                    req = {"type": "task_new", "who": who, "title": title, "due": due}
+                    summary = f"New job for {people.get(who, who)}: {title}" + (f", due {due}" if due else "")
+
+        if req:
+            sig = json.dumps(req, sort_keys=True)
+            if sig not in seen:
+                seen.add(sig)
+                out.append({"who": sender, "text": text[:300], "change": req, "summary": summary})
+    return out
+
+
+def load_board(db):
+    """The jobs and events a request can point at."""
+    tasks = [dict(d.to_dict() or {}, id=d.id) for d in db.collection("tasks").stream()]
+    events = [dict(d.to_dict() or {}, id=d.id) for d in db.collection("events").stream()]
+    return tasks, events
+
+
+def publish_requests(db, reqs, today):
+    """File each request once. The id comes from the change itself, so the
+    same ask repeated (or the wrap run twice) is one request, and one an
+    admin has already dealt with is never brought back."""
+    import hashlib
+    from google.cloud import firestore as fs
+
+    n = 0
+    for r in reqs:
+        rid = hashlib.sha1((today + json.dumps(r["change"], sort_keys=True)).encode("utf-8")).hexdigest()[:24]
+        ref = db.collection("requests").document(rid)
+        if ref.get().exists:
+            continue
+        ref.set({"date": today, "who": r["who"], "text": r["text"], "change": r["change"], "summary": r["summary"],
+                 "status": "pending", "createdAt": fs.SERVER_TIMESTAMP})
+        n += 1
+    log(f"requests: {n} new, {len(reqs) - n} already filed")
+    return n
+
+
+# --------------------------------------------------------------------------
 # publishing
 # --------------------------------------------------------------------------
 def firestore(cfg):
@@ -535,10 +752,23 @@ def main():
         status.beat("chatwrap", False, "read nothing from the chat - signed out, or Instagram changed")
         return
 
+    # simple asks in the chat, as proposals for an admin to apply
+    reqs = []
+    try:
+        db = firestore(cfg)
+        tasks, events = load_board(db)
+        reqs = find_requests(rows, dt.date.fromisoformat(today), people_names(cfg), tasks, events)
+        for r in reqs:
+            log("  request: " + r["summary"] + "  <- " + r["text"][:60])
+        if reqs and not args.dry_run:
+            publish_requests(db, reqs, today)
+    except Exception:
+        log("requests: skipped:\n" + traceback.format_exc())      # never lose the wrap over this
+
     lines = summarise(cfg, rows)
     if not lines:
         log("nothing worth posting today")
-        status.beat("chatwrap", True, "ran - nothing worth posting today")
+        status.beat("chatwrap", True, "ran - nothing worth posting today" + (f", {len(reqs)} request(s)" if reqs else ""))
         return
 
     for ln in lines:
@@ -550,7 +780,7 @@ def main():
 
     publish(cfg, lines, today, "model" if has_real_key(cfg) else "rules")
     log("done")
-    status.beat("chatwrap", True, f"{len(lines)} lines waiting for review")
+    status.beat("chatwrap", True, f"{len(lines)} lines waiting for review" + (f", {len(reqs)} request(s)" if reqs else ""))
 
 
 if __name__ == "__main__":

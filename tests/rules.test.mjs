@@ -49,6 +49,9 @@ async function seed() {
     await setDoc(doc(db, "outbox", "nightly-2026-09-26"), { kind: "nightly", date: "2026-09-26", text: "hi", by: "bach", status: "pending" });
     await setDoc(doc(db, "outbox", "nightly-2026-09-20"), { kind: "nightly", date: "2026-09-20", text: "hi", by: "bach", status: "failed" });
     await setDoc(doc(db, "outbox", "nightly-2026-09-19"), { kind: "nightly", date: "2026-09-19", text: "hi", by: "bach", status: "sent" });
+    await setDoc(doc(db, "requests", "r-1"), { date: "2026-09-27", who: "bach", text: "move the sale to the 7th",
+      change: { type: "event_date", eventId: "e1", date: "2026-10-07" }, status: "pending" });
+    await setDoc(doc(db, "requests", "r-done"), { date: "2026-09-26", who: "bach", text: "x", change: {}, status: "applied" });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
       code: "A7K2", paid: false, pickedUp: false, pushed: false });
   });
@@ -248,6 +251,19 @@ const cases = [
   ["admin tries a failed one again",         true,  () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-20"), { status: "pending", updatedAt: serverTimestamp(), updatedBy: "peter" })],
   ["cannot re-send one that went",           false, () => updateDoc(doc(as(PETER), "outbox/nightly-2026-09-19"), { status: "pending" })],
   ["nobody deletes from the outbox",         false, () => deleteDoc(doc(as(PETER), "outbox/nightly-2026-09-26"))],
+
+  // ---------------------------------------------------------------- requests from the chat
+  ["admin lists pending requests (the site's query)", true, () => getDocs(query(collection(as(BACH), "requests"), where("status", "==", "pending")))],
+  ["member cannot read requests",            false, () => getDocs(query(collection(as(EMILY), "requests"), where("status", "==", "pending")))],
+  ["finance cannot read requests",           false, () => getDoc(doc(as(THUAN), "requests/r-1"))],
+  ["admin applies a request",                true,  () => updateDoc(doc(as(PETER), "requests/r-1"), { status: "applied", reviewedAt: serverTimestamp(), reviewedBy: PETER })],
+  ["admin dismisses a request",              true,  () => updateDoc(doc(as(BACH), "requests/r-1"), { status: "dismissed", reviewedAt: serverTimestamp(), reviewedBy: BACH })],
+  ["member cannot apply a request",          false, () => updateDoc(doc(as(EMILY), "requests/r-1"), { status: "applied" })],
+  ["admin cannot rewrite what was asked",    false, () => updateDoc(doc(as(PETER), "requests/r-1"), { change: { type: "task_new", who: "peter", title: "x" } })],
+  ["no made-up request status",              false, () => updateDoc(doc(as(PETER), "requests/r-1"), { status: "maybe" })],
+  ["a dealt-with request stays dealt with",  false, () => updateDoc(doc(as(PETER), "requests/r-done"), { status: "dismissed" })],
+  ["nobody on the site files a request",     false, () => setDoc(doc(as(PETER), "requests/r-new"), { status: "pending", change: {} })],
+  ["nobody deletes a request",               false, () => deleteDoc(doc(as(PETER), "requests/r-1"))],
 ];
 
 let failed = 0;

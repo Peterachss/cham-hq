@@ -71,7 +71,7 @@ if (!CONFIGURED) {
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
-  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null, unsubOutbox = null;
+  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null, unsubOutbox = null, unsubRequests = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   /* While Firebase restores a saved login (a few seconds on a slow
@@ -222,6 +222,7 @@ if (!CONFIGURED) {
     if (unsubOnboard) { unsubOnboard(); unsubOnboard = null; }
     if (unsubEvents) { unsubEvents(); unsubEvents = null; }
     if (unsubOutbox) { unsubOutbox(); unsubOutbox = null; }
+    if (unsubRequests) { unsubRequests(); unsubRequests = null; }
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -499,6 +500,19 @@ if (!CONFIGURED) {
         },
         (err) => { console.error("Chạm HQ: lost the chat drafts", err); window.ChamHQ.setDrafts(null); });
 
+      // asks the nightly wrap spotted in the chat, waiting for an admin
+      unsubRequests = onSnapshot(query(collection(db, "requests"), where("status", "==", "pending")),
+        (qs) => {
+          const rows = [];
+          qs.forEach((d) => {
+            const v = d.data();
+            if (!v.change || typeof v.change !== "object") return;
+            rows.push({ id: d.id, date: v.date || "", who: v.who || "team", text: v.text || "", change: v.change, summary: v.summary || "" });
+          });
+          window.ChamHQ.setRequests(rows);
+        },
+        (err) => { console.error("Chạm HQ: lost the chat requests", err); window.ChamHQ.setRequests(null); });
+
       // the last few group chat posts, so an admin sees whether tonight's went
       unsubOutbox = onSnapshot(query(collection(db, "outbox"), orderBy("createdAt", "desc"), limit(3)),
         (qs) => {
@@ -704,6 +718,10 @@ if (!CONFIGURED) {
     async setOutboxStatus(id, status) {
       await updateDoc(doc(db, "outbox", id), { status, updatedAt: serverTimestamp(),
         updatedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
+    },
+    async setRequestStatus(id, status) {
+      await updateDoc(doc(db, "requests", id), { status, reviewedAt: serverTimestamp(),
+        reviewedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
     },
     async deletePushSub(endpoint) {
       await deleteDoc(doc(db, "pushSubs", await subId(endpoint)));

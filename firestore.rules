@@ -120,6 +120,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Simple asks spotted in the chat by the nightly wrap ("move the sale
+    // to the 7th"), each with the change it proposes. Written only by the
+    // wrap (service account). Admins apply or dismiss them - applying makes
+    // the real change through the usual rules for jobs and events.
+    match /requests/{reqId} {
+      allow read:   if isAdmin();
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+                    && resource.data.status == 'pending'
+                    && request.resource.data.status in ['applied', 'dismissed'];
+      allow create, delete: if false;
+    }
+
     // The Announce box, and Nudge on a job. Admins file a message under
     // their own name as "pending"; the sender (service account) pushes it -
     // to everyone, or for a nudge (with "to") to that one person - and marks

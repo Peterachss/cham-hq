@@ -1386,3 +1386,13 @@
   .gc-status.failed { border-color: var(--clay); background: var(--clay-soft); color: var(--clay); }
   .gc-status > span:nth-child(2) { flex: 1 1 180px; min-width: 0; }
   .gc-status .act { margin-left: auto; }
+
+  /* requests from the chat, each with the change it would make */
+  .req-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .req { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+  .req.gone { opacity: .7; }
+  .req-said { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  .req-who { font-weight: 600; color: var(--ink-2); }
+  .req-q { flex: 1 1 100%; font-style: italic; color: var(--ink-2); overflow-wrap: anywhere; }
+  .req-what { margin: 0; font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; }
+  .req.gone .req-what { color: var(--muted); font-size: 13px; }

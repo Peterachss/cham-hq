@@ -126,7 +126,7 @@
   let DRAFTS = null;
   let ANNOUNCES = null;
   let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
-  let SYS = null, OB = null, OUTBOX = null;
+  let SYS = null, OB = null, OUTBOX = null, REQUESTS = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -217,6 +217,7 @@
       return ADMIN_ON;
     },
     setAnnouncements(rows) { ANNOUNCES = rows; renderAnnounce(); },
+    setRequests(rows) { REQUESTS = Array.isArray(rows) ? rows : null; if (S.view === "updates") { renderRequests(); renderToolbar(); } },
     setOutbox(rows) { OUTBOX = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderDrafts(); },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
     personRole: (k) => (PEOPLE[k] ? PEOPLE[k].role : null)
@@ -233,7 +234,7 @@
   function resetPanels() {
     ["task-filters","status-filters","upd-filters","photo-filters",
      "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings",
-     "whos-on","me","system","countdown","tool-bar"].forEach((id) => {
+     "whos-on","me","system","countdown","tool-bar","chat-requests"].forEach((id) => {
       const n = $(id); if (n) n.replaceChildren();
     });
   }
@@ -530,7 +531,7 @@
     renderGlance();
     renderNotify();
     renderFab();
-    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderFeed(); renderUpdateAdmin(); renderToolbar(); }
+    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderRequests(); renderFeed(); renderUpdateAdmin(); renderToolbar(); }
     if (S.view === "me") renderMe();
     if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
     if (S.view === "sponsors") renderSponsors();
@@ -924,6 +925,100 @@
       DRAFT_CARDS.set(d.id, { sig, node: card });
       box.appendChild(card);
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Requests from the chat: simple asks the nightly wrap spotted ("move
+   * the sale to the 7th", "mark my merch job done"). Each one says what
+   * it would change, worked out from the jobs and events as they are now.
+   * Nothing changes until an admin taps Apply twice.
+   * ------------------------------------------------------------------ */
+  function describeRequest(r) {
+    const c = r.change || {}, nm = (k) => (PEOPLE[k] ? PEOPLE[k].name : k);
+    if (c.type === "event_date") {
+      const ev = (EVDB || []).find((x) => x.id === c.eventId);
+      if (!ev) return { gone: "That event isn\u2019t on the countdown any more." };
+      if (ev.date === c.date) return { gone: ev.name + " is already on " + pretty(c.date) + "." };
+      return { icon: "\ud83d\udcc5", parts: ["Move ", [ev.name], " from " + pretty(ev.date) + " to ", [pretty(c.date)]], ev };
+    }
+    if (c.type === "task_status") {
+      const t = TASKS.find((x) => x.id === c.taskId);
+      if (!t) return { gone: "That job isn\u2019t on the list any more." };
+      const label = { done: "done", blocked: "stuck", doing: "in progress", open: "not started" }[c.status];
+      if (!label) return { gone: "The chat asked for a status the site doesn\u2019t know." };
+      if (t.status === c.status) return { gone: "\u201c" + t.title + "\u201d is already " + label + "." };
+      return { icon: c.status === "done" ? "\u2705" : c.status === "blocked" ? "\ud83d\udea7" : "\u25b6\ufe0f",
+        parts: ["Mark " + nm(t.who) + "\u2019s job ", [t.title], " " + label], t };
+    }
+    if (c.type === "task_new") {
+      if (!PEOPLE[c.who] || !c.title) return { gone: "The chat named somebody the site doesn\u2019t know." };
+      return { icon: "\u2795", parts: ["New job for " + nm(c.who) + ": ", [c.title], c.due ? ", due " + pretty(c.due) : ""] };
+    }
+    return { gone: "The site doesn\u2019t know how to do that one." };
+  }
+
+  async function applyRequest(r) {
+    const c = r.change, d = describeRequest(r), asker = PEOPLE[r.who] ? PEOPLE[r.who].name : r.who;
+    const from = " (asked in the chat by " + asker + ")";
+    if (d.gone) throw new Error(d.gone);
+    if (c.type === "event_date") {
+      await window.ChamLive.saveEvent(d.ev.id, { date: c.date });
+      logActivity({ who: r.who, ref: "req-" + r.id, event: "request", key: true,
+        text: "\ud83d\udcc5 **" + d.ev.name + "** moved to " + pretty(c.date) + from });
+    } else if (c.type === "task_status") {
+      const t = d.t;
+      await window.ChamLive.setStatus(t.id, c.status);
+      if (c.status === "done") logActivity({ who: t.who, ref: t.id, event: "done", text: "Finished **" + t.title + "**" + from });
+      else if (c.status === "blocked") logActivity({ who: t.who, ref: t.id, event: "stuck", text: "Stuck on **" + t.title + "**" + from });
+      else logActivity({ who: t.who, ref: "req-" + r.id, event: "request", text: "Started **" + t.title + "**" + from });
+    } else if (c.type === "task_new") {
+      const newId = await window.ChamLive.addTask({ who: c.who, title: c.title, note: "", due: c.due || null });
+      logActivity({ who: SESSION.personKey, ref: newId, event: "assign",
+        text: "Gave " + (PEOPLE[c.who] ? PEOPLE[c.who].name : c.who) + " a job: **" + c.title + "**" + (c.due ? ", due " + pretty(c.due) : "") + from });
+    }
+    await window.ChamLive.setRequestStatus(r.id, "applied");
+  }
+
+  function renderRequests() {
+    const box = $("chat-requests");
+    if (!box) return;
+    const list = (REQUESTS || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    const on = Boolean(SESSION && SESSION.admin && window.ChamLive && window.ChamLive.setRequestStatus && list.length);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    const n = list.length;
+    box.replaceChildren(
+      el("div", { class: "cw-head" }, [
+        el("h3", { class: "grp", text: "From the chat: " + n + " request" + (n === 1 ? "" : "s") }),
+        el("span", { class: "cw-sub", text: "Asks the 9pm wrap spotted in the group chat. Nothing changes until you tap Apply." })
+      ]),
+      el("ul", { class: "req-list" }, list.map((r) => {
+        const d = describeRequest(r);
+        const msg = el("span", { class: "ad-msg" });
+        const apply = el("button", { class: "au-go", type: "button", text: "\u2713 Apply", disabled: Boolean(d.gone), onclick: async (e) => {
+          const b = e.currentTarget;
+          if (!tapTwice(b, "Tap again to apply")) return;
+          b.disabled = true; msg.classList.remove("bad");
+          try { await applyRequest(r); toast("Done \u2014 it\u2019s in the feed"); }
+          catch (err) { b.disabled = false; msg.textContent = "Didn\u2019t apply. " + (err.code || err.message); msg.classList.add("bad"); }
+        } });
+        const dismiss = el("button", { class: "act ghost", type: "button", text: "\u2715 Dismiss", onclick: async (e) => {
+          const b = e.currentTarget;
+          if (!tapTwice(b, "Tap again to dismiss")) return;
+          b.disabled = true;
+          try { await window.ChamLive.setRequestStatus(r.id, "dismissed"); }
+          catch (err) { b.disabled = false; msg.textContent = "Didn\u2019t save. " + (err.code || err.message); msg.classList.add("bad"); }
+        } });
+        return el("li", { class: "req" + (d.gone ? " gone" : "") }, [
+          el("div", { class: "req-said" }, [avatar(r.who), el("span", { class: "req-who", text: (PEOPLE[r.who] ? PEOPLE[r.who].name : r.who) + (r.date ? " \u00b7 " + pretty(r.date) : "") }),
+            el("q", { class: "req-q", text: r.text })]),
+          d.gone ? el("p", { class: "req-what", text: d.gone })
+            : el("p", { class: "req-what" }, [el("span", { "aria-hidden": "true", text: d.icon + " " })]
+                .concat(d.parts.map((x) => (Array.isArray(x) ? el("b", { text: x[0] }) : document.createTextNode(x))))),
+          el("div", { class: "sf-row" }, [apply, dismiss, msg])
+        ]);
+      }))
+    );
   }
 
   /* 2 to 4 lines for the group chat: the ones marked important first, then
@@ -1372,6 +1467,7 @@
     const sysBad = $("system") && /attention/.test($("system").textContent || "");
     const tools = [
       ["post", "\u270d\ufe0f Post an update", avail("upd-admin"), ""],
+      ["requests", "\ud83d\udce5 From the chat", avail("chat-requests"), REQUESTS && REQUESTS.length ? REQUESTS.length + " request" + (REQUESTS.length === 1 ? "" : "s") : ""],
       ["announce", "\ud83d\udce3 Announce", avail("announce"), ""],
       ["notify", "\ud83d\udd14 Notifications", avail("whos-on"), ppl.length ? onN + "/" + ppl.length : ""],
       ["system", sysBad ? "\u26a0\ufe0f Background jobs" : "\u2699\ufe0f Background jobs", avail("system"), sysBad ? "needs a look" : "ok"]

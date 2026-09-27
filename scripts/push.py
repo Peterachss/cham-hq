@@ -221,6 +221,9 @@ def drafts(db, P, by_key, subs):
         lines = v.get("lines") or []
         kept = sum(1 for l in lines if l.get("keep", True))
         body = f"{kept} line{'s' if kept != 1 else ''} worth keeping from {len(lines)} read. Tap to look before it goes up."
+        asks = sum(1 for _ in db.collection("requests").where(filter=FieldFilter("status", "==", "pending")).stream())
+        if asks:
+            body += f" Plus {asks} request{'s' if asks != 1 else ''} from the chat to apply or dismiss."
         log(f"  chat wrap ready -> admins: {body}")
         for a in admins:
             if a["key"] in subs:
