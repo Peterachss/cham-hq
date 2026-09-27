@@ -33,6 +33,14 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import status  # noqa: E402
 
+# Task Scheduler gives Python an old Windows text encoding that can't write
+# emoji or Vietnamese, and printing a chat line would crash the whole wrap.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HOME = os.path.join(os.path.expanduser("~"), ".cham-hq")
 CONFIG = os.path.join(HOME, "config.json")
 PROFILE = os.path.join(HOME, "ig-profile")
@@ -47,7 +55,10 @@ PEOPLE_KEYS = ["bach", "thuan", "peter", "emily", "thanh", "thy", "sarah", "uyen
 def log(msg):
     stamp = dt.datetime.now().strftime("%H:%M:%S")
     line = f"[{stamp}] {msg}"
-    print(line, flush=True)
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass                                            # a log line must never stop the wrap
     os.makedirs(LOGS, exist_ok=True)
     with open(os.path.join(LOGS, dt.date.today().isoformat() + ".log"), "a", encoding="utf-8") as f:
         f.write(line + "\n")
