@@ -168,6 +168,7 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
+    setEventsDb(rows) { EVDB = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderCountdown(); },
     setSysStatus(d) { SYS = d; if (S.view === "updates") renderSystem(); },
     setOnboarding(d) {
       const first = OB === null;
@@ -1003,30 +1004,55 @@
    * that, a target date from the plan (marked as not locked yet).
    * ------------------------------------------------------------------ */
   const STOP = new Set(["sale", "sales", "event", "before", "after", "break", "target", "first", "with", "from", "the", "and", "one", "day", "our", "chạm"]);
+  let EVDB = null;             // events admins set (Firestore); the countdown's main source
+  let EV_EDIT = null;          // the event being edited on the card, or "new"
   function nextEvents() {
     const out = [];
-    (SALES || []).forEach((x) => { if (x.date && x.date >= TODAY) out.push({ name: x.name, date: x.date, sale: x }); });
-    (ACTS || []).forEach((a) => { if (a.date && a.date >= TODAY) out.push({ name: a.name, date: a.date }); });
-    EVENTS.forEach((e) => {
-      if (e.date >= TODAY && e.state !== "past" && /sale|fundrais|booth|drop|market|tournament|program/i.test(e.title))
-        out.push({ name: e.title.replace(/^Target:\s*/i, ""), date: e.date, tentative: e.state === "target" });
+    const names = new Set();
+    (EVDB || []).forEach((e) => {
+      if (e.date && e.date >= TODAY) { out.push({ ...e, tentative: !e.locked, db: true }); names.add(e.name.toLowerCase()); }
     });
+    (SALES || []).forEach((x) => {
+      if (x.date && x.date >= TODAY && !names.has(x.name.toLowerCase())) out.push({ name: x.name, date: x.date, sale: x });
+    });
+    (ACTS || []).forEach((a) => {
+      if (a.date && a.date >= TODAY && !names.has(a.name.toLowerCase())) out.push({ name: a.name, date: a.date });
+    });
+    if (!EVDB || !EVDB.length) {        // nothing set up yet: fall back to the plan's target dates
+      EVENTS.forEach((e) => {
+        if (e.date >= TODAY && e.state !== "past" && /sale|fundrais|booth|drop|market|tournament|program/i.test(e.title))
+          out.push({ name: e.title.replace(/^Target:\s*/i, ""), date: e.date, tentative: e.state === "target" });
+      });
+    }
     const seen = new Set();
     return out.sort((a, b) => a.date.localeCompare(b.date) || (Number(!!a.tentative) - Number(!!b.tentative)))
-      .filter((e) => { const k = e.date + e.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+      .filter((e) => { const k = e.date + e.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((e) => ({ ...e, sale: e.sale || (SALES || []).find((x) => x.name.toLowerCase() === e.name.toLowerCase() || (x.date && x.date === e.date)) || null }));
+  }
+
+  function eventJobs(e) {
+    if (e.jobs) return TASKS.filter((t) => e.jobs.includes(t.id) && t.status !== "done");   // the admin picked them
+    const words = e.name.toLowerCase().split(/[^a-zà-ỹ0-9#]+/i).filter((w) => w.length >= 4 && !STOP.has(w));
+    return TASKS.filter((t) => t.status !== "done"
+      && (words.some((w) => t.title.toLowerCase().includes(w)) || t.due === e.date));        // named after it, or due that day
   }
 
   function renderCountdown() {
     const box = $("countdown");
     if (!box) return;
+    const admin = Boolean(SESSION && SESSION.admin);
+    if (EV_EDIT && admin) { box.hidden = false; box.replaceChildren(eventForm()); return; }
     const evs = SESSION ? nextEvents() : [];
-    box.hidden = !evs.length;
-    if (!evs.length) { box.replaceChildren(); return; }
+    box.hidden = !evs.length && !admin;
+    if (!evs.length) {
+      box.replaceChildren(admin ? el("div", { class: "sf-row" }, [
+        el("span", { class: "an-sub", text: "No upcoming event. Add one and the whole team sees the countdown." }),
+        el("button", { class: "act", type: "button", text: "+ Add event", onclick: () => { EV_EDIT = "new"; renderCountdown(); } })]) : null);
+      return;
+    }
     const e = evs[0], d = days(TODAY, e.date);
-    const words = e.name.toLowerCase().split(/[^a-zà-ỹ0-9#]+/i).filter((w) => w.length >= 4 && !STOP.has(w));
-    const jobs = TASKS.filter((t) => t.status !== "done"
-      && (words.some((w) => t.title.toLowerCase().includes(w)) || t.due === e.date));   // named after it, or due that day
-    const line = (e.sale && e.sale.name) || e.name;
+    const jobs = eventJobs(e);
+    const line = e.line || (e.sale && e.sale.name) || e.name;
     const money = (LEDGER || []).filter((m) => (m.budgetLine || "").toLowerCase() === line.toLowerCase());
     const mIn = money.filter((m) => m.kind === "in").reduce((n, m) => n + m.amount, 0);
     const mOut = money.filter((m) => m.kind === "out").reduce((n, m) => n + m.amount, 0);
@@ -1034,25 +1060,74 @@
 
     box.replaceChildren(
       el("div", { class: "cd-main" }, [
-        el("div", { class: "cd-num" }, [el("span", { class: "cd-n", text: d === 0 ? "Today" : d === 1 ? "1" : String(d) }),
+        el("div", { class: "cd-num" }, [el("span", { class: "cd-n", text: d === 0 ? "Today" : String(d) }),
           d > 0 ? el("span", { class: "cd-k", text: d === 1 ? "day to go" : "days to go" }) : null]),
         el("div", { class: "cd-what" }, [
           el("b", { text: e.name.charAt(0).toUpperCase() + e.name.slice(1) }),
-          el("span", { text: pretty(e.date) + (e.tentative ? " \u00b7 target date, not locked yet" : "") }),
-        ])
+          el("span", { text: pretty(e.date) + (e.tentative ? " \u00b7 target date, not locked yet" : " \u00b7 locked in") })
+        ]),
+        admin ? el("div", { class: "cd-edit" }, [
+          el("button", { class: "act ghost", type: "button", text: "Edit", onclick: () => { EV_EDIT = e.db ? e.id : { ...e }; renderCountdown(); } }),
+          el("button", { class: "act ghost", type: "button", text: "+ Add event", onclick: () => { EV_EDIT = "new"; renderCountdown(); } })]) : null
       ]),
       el("div", { class: "cd-facts" }, [
-        el("div", {}, [el("span", { class: "sf-k", text: "Jobs for it" }),
-          jobs.length ? el("ul", { class: "cd-jobs" }, jobs.slice(0, 5).map((t) => el("li", {}, [avatar(t.who), el("span", { text: t.title }),
+        el("div", {}, [el("span", { class: "sf-k", text: "Jobs for it" + (e.jobs ? "" : " (guessed)") }),
+          jobs.length ? el("ul", { class: "cd-jobs" }, jobs.slice(0, 6).map((t) => el("li", {}, [avatar(t.who), el("span", { text: t.title }),
             el("span", { class: "pill " + (t.due && t.due < TODAY ? "late" : t.status), text: t.due && t.due < TODAY ? "overdue" : STATUS[t.status].label })])))
-          : el("span", { class: "cd-none", text: "Nothing on the jobs list mentions it yet." })]),
+          : el("span", { class: "cd-none", text: admin ? "No jobs linked yet \u2014 tap Edit to pick them." : "No jobs linked to it yet." })]),
         e.sale ? el("div", {}, [el("span", { class: "sf-k", text: "Pre-orders" }),
           el("span", { class: "cd-val", text: orders.length + " order" + (orders.length === 1 ? "" : "s") + " \u00b7 " + (e.sale.open ? "taking orders" : "closed") })]) : null,
         el("div", {}, [el("span", { class: "sf-k", text: "Money" }),
-          el("span", { class: "cd-val", text: money.length ? "In " + fmtVnd(mIn) + " \u00b7 out " + fmtVnd(mOut) + " \u00b7 left " + fmtVnd(mIn - mOut) : "Nothing logged for it yet \u2014 log costs under \u201c" + line + "\u201d." })])
+          el("span", { class: "cd-val", text: money.length ? "In " + fmtVnd(mIn) + " \u00b7 out " + fmtVnd(mOut) + " \u00b7 left " + fmtVnd(mIn - mOut)
+            : "Nothing logged yet \u2014 log money under \u201c" + line + "\u201d." })])
       ]),
       evs.length > 1 ? el("p", { class: "cd-then", text: "Then: " + evs.slice(1, 3).map((x) => x.name + " (" + days(TODAY, x.date) + " days)").join(" \u00b7 ") }) : null
     );
+  }
+
+  /* the admin's edit form, in place of the card */
+  function eventForm() {
+    const cur = EV_EDIT === "new" ? { name: "", date: "", locked: false, jobs: null, line: "" }
+      : typeof EV_EDIT === "string" ? (EVDB || []).find((x) => x.id === EV_EDIT) || { name: "", date: "" }
+      : EV_EDIT;                                   // a plan target being turned into a real event
+    const id = typeof EV_EDIT === "string" && EV_EDIT !== "new" ? EV_EDIT : null;
+    const name = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: cur.name || "", placeholder: "Event, e.g. Ice cream sale", "aria-label": "Event" });
+    const date = el("input", { class: "ad-in", type: "date", value: cur.date || "", "aria-label": "Date" });
+    const locked = el("input", { type: "checkbox", id: "ev-locked", checked: cur.locked === true });
+    const line = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: cur.line || "", placeholder: "Money is logged under\u2026 (blank = the event name)", "aria-label": "Money line" });
+    const picked = new Set(cur.jobs || eventJobs({ ...cur, jobs: null }).map((t) => t.id));
+    const jobs = el("div", { class: "ev-jobs" }, TASKS.filter((t) => t.status !== "done")
+      .sort((a, b) => (a.due || "9").localeCompare(b.due || "9"))
+      .map((t) => {
+        const cb = el("input", { type: "checkbox", checked: picked.has(t.id) });
+        cb.addEventListener("change", () => { cb.checked ? picked.add(t.id) : picked.delete(t.id); });
+        return el("label", { class: "ev-job" }, [cb, avatar(t.who), el("span", { text: t.title + (t.due ? " \u00b7 " + pretty(t.due) : "") })]);
+      }));
+    const msg = el("span", { class: "ad-msg" });
+    const close = () => { EV_EDIT = null; renderCountdown(); };
+    const save = el("button", { class: "au-go", type: "button", text: "Save", onclick: async () => {
+      if (!name.value.trim() || !date.value) { msg.textContent = "Give it a name and a date."; msg.classList.add("bad"); return; }
+      save.disabled = true;
+      try {
+        await window.ChamLive.saveEvent(id, { name: name.value.trim(), date: date.value, locked: locked.checked,
+          line: line.value.trim(), jobs: [...picked] });
+        close(); toast("Countdown updated");
+      } catch (err) { save.disabled = false; msg.textContent = "Didn\u2019t save. " + (err.code || err.message); msg.classList.add("bad"); }
+    } });
+    return el("div", { class: "sale-form ev-form" }, [
+      el("b", { text: id ? "Edit event" : "Add event" }),
+      el("div", { class: "sf-row" }, [name, date]),
+      el("label", { class: "sp-lbl" }, [locked, document.createTextNode(" Date is locked in (not just a target)")]),
+      line,
+      el("span", { class: "sf-k", text: "Jobs for it \u2014 tick the ones that belong" }), jobs,
+      el("div", { class: "sf-row" }, [
+        id ? el("button", { class: "act ghost danger", type: "button", text: "Delete event", onclick: async (ev) => {
+          if (!tapTwice(ev.currentTarget, "Tap again to delete")) return;
+          try { await window.ChamLive.deleteEvent(id); close(); } catch (err) { toast("Didn\u2019t delete. " + (err.code || err.message)); }
+        } }) : el("span"),
+        el("div", { class: "sf-row" }, [el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: close }), save])
+      ]), msg
+    ]);
   }
 
   /* ------------------------------------------------------------------ *

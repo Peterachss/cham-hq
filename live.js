@@ -71,7 +71,7 @@ if (!CONFIGURED) {
 
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
-  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null;
+  let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
   function showSignedOut(msg) {
@@ -198,6 +198,7 @@ if (!CONFIGURED) {
     if (unsubPushStatus) { unsubPushStatus(); unsubPushStatus = null; }
     if (unsubSys) { unsubSys(); unsubSys = null; }
     if (unsubOnboard) { unsubOnboard(); unsubOnboard = null; }
+    if (unsubEvents) { unsubEvents(); unsubEvents = null; }
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -420,6 +421,19 @@ if (!CONFIGURED) {
         window.ChamHQ.setSponsors(rows);
       },
       (err) => { console.error("Chạm HQ: lost the sponsors", err); window.ChamHQ.setSponsors(null); });
+    // events for the countdown card
+    unsubEvents = onSnapshot(collection(db, "events"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, name: v.name || "Event", date: v.date || "", locked: v.locked === true,
+            jobs: Array.isArray(v.jobs) ? v.jobs : null, line: v.line || "" });
+        });
+        window.ChamHQ.setEventsDb(rows);
+      },
+      () => window.ChamHQ.setEventsDb(null));
+
     // your own getting-started checklist
     unsubOnboard = onSnapshot(doc(db, "onboarding", session.email),
       (s) => window.ChamHQ.setOnboarding(s.exists() ? s.data() : {}),
@@ -594,6 +608,11 @@ if (!CONFIGURED) {
       const ref = await addDoc(collection(db, "meetings"), { ...m, createdAt: serverTimestamp() });
       return ref.id;
     },
+    async saveEvent(id, e) {
+      if (id) { await setDoc(doc(db, "events", id), { ...e, updatedAt: serverTimestamp() }, { merge: true }); return id; }
+      return (await addDoc(collection(db, "events"), { ...e, createdAt: serverTimestamp() })).id;
+    },
+    async deleteEvent(id) { await deleteDoc(doc(db, "events", id)); },
     async saveOnboarding(patch) {
       await setDoc(doc(db, "onboarding", auth.currentUser.email.toLowerCase()), patch, { merge: true });
     },

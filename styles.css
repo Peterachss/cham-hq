@@ -1290,3 +1290,12 @@
   .archive summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 6px 0; }
   .archive .me-list { margin-top: 8px; }
   .archive .me-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  /* countdown editing (admins) */
+  .cd-main { position: relative; }
+  .cd-edit { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-self: flex-start; }
+  .ev-form { background: var(--card); }
+  .ev-jobs { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; padding: 4px; border: 1px solid var(--line-soft); border-radius: 8px; }
+  .ev-job { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 4px; border-radius: 6px; cursor: pointer; }
+  .ev-job:hover { background: var(--card-2); }
+  @media (max-width: 620px) { .cd-main { flex-wrap: wrap; } .cd-edit { margin-left: 0; } }

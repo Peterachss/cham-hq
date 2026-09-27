@@ -199,6 +199,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Events for the countdown card: what's coming, locked or a target, and
+    // which jobs belong to it. Everyone sees them; admins set them.
+    match /events/{evId} {
+      allow read:  if isMember();
+      allow write: if isAdmin()
+                   && request.resource.data.name is string && request.resource.data.name.size() > 0
+                   && request.resource.data.date is string;
+      allow delete: if isAdmin();
+    }
+
     // Your own getting-started checklist: yours alone, nobody else's.
     match /onboarding/{who} {
       allow read, write: if isMember() && who == email();
