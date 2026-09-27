@@ -1366,3 +1366,12 @@
     .fab-judy { transform: scale(.86); transform-origin: 0 100%; }
     body.fab-away .fab { transform: translateY(160%); }
   }
+
+  /* while a saved login is being restored: a quiet "Signing you in..." */
+  body.auth-pending .gate-locked, body:not(.auth-pending) .gate-wait { display: none; }
+  .gate-spin, .au-spin { display: inline-block; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--jade); animation: spin .9s linear infinite; }
+  .gate-spin { width: 28px; height: 28px; }
+  .au-spin { width: 13px; height: 13px; border-width: 2px; margin-right: 8px; vertical-align: -2px; }
+  .au-pending { font-size: 13px; color: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .gate-spin, .au-spin { animation-duration: 3s; } }

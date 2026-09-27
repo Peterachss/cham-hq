@@ -74,7 +74,17 @@ if (!CONFIGURED) {
   let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null;
 
   /* ----- the sign-in bar ------------------------------------------ */
+  /* While Firebase restores a saved login (a few seconds on a slow
+     connection), say so - showing the sign-in boxes meanwhile made it look
+     like everyone had been signed out every time they opened the site. */
+  function showPending(text) {
+    document.body.classList.add("auth-pending");
+    bar.hidden = false;
+    bar.replaceChildren(el("span", { class: "au-pending" }, [el("span", { class: "au-spin", "aria-hidden": "true" }), document.createTextNode(text)]));
+  }
+
   function showSignedOut(msg) {
+    document.body.classList.remove("auth-pending");
     bar.hidden = false;
     bar.replaceChildren();
 
@@ -117,6 +127,7 @@ if (!CONFIGURED) {
   }
 
   function showSignedIn(session) {
+    document.body.classList.remove("auth-pending");
     bar.hidden = false;
     bar.replaceChildren(
       el("span", { class: "au-who" }, [
@@ -218,6 +229,8 @@ if (!CONFIGURED) {
       showSignedOut();
       return;
     }
+
+    showPending("Signing you in…");
 
     // Who is this, in Chạm terms?
     let member = null, lookupFailed = null;
@@ -670,5 +683,5 @@ if (!CONFIGURED) {
     }
   };
 
-  showSignedOut();
+  showPending("Signing you in…");
 }
