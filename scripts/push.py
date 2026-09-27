@@ -336,7 +336,8 @@ def push_status(db, members, subs, dry):
 # The laptop-only watcher is not alerted on - a closed laptop is normal,
 # and GitHub still sends announcements every 15 minutes.
 HEALTH = {
-    "github":   (3,  True,  "The GitHub backup job (every 15 min)"),
+    # GitHub runs "every 15 min" only when it isn't busy - often hours apart
+    "github":   (12, True,  "The GitHub backup job"),
     "finance":  (6,  True,  "The finance sheet sync"),
     "backup":   (50, True,  "The nightly backup"),
     "chatwrap": (50, True,  "The 9pm chat wrap"),

@@ -14,12 +14,15 @@ must never break the job itself, so any problem here is swallowed.
 
 import datetime as dt
 import os
+import sys
 
 VN = dt.timezone(dt.timedelta(hours=7))
 
 
 def where():
-    return "github" if os.environ.get("GITHUB_ACTIONS") == "true" else "laptop"
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        return "github"
+    return "mac" if sys.platform == "darwin" else "laptop"
 
 
 def beat(job, ok, msg="", db=None):

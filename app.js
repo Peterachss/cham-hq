@@ -1171,21 +1171,23 @@
     box.hidden = !on;
     if (!on) { box.replaceChildren(); return; }
     const J = SYS.jobs || {};
+    const WHERE = { mac: "on the Mac", laptop: "on Windows", github: "on GitHub" };
+    const by = (j) => (j && WHERE[j.where] ? " \u00b7 " + WHERE[j.where] : "");
     const rows = [
       ["Notifications", "every 15 min", J.push && J.push.at, 1, J.push],
-      ["GitHub backup job", "every 15 min, laptop off too", J.push && J.push.githubAt, 3, J.push, "gh"],
-      ["Instant announcements", "Peter\u2019s laptop", J.announce && J.announce.at, 0.5, J.announce, "laptop"],
+      ["GitHub backup job", "last resort \u00b7 GitHub runs it every few hours", J.push && J.push.githubAt, 12, J.push, "gh"],
+      ["Instant announcements", "Mac or Windows", J.announce && J.announce.at, 0.5, J.announce, "laptop"],
       ["Finance sheet sync", "hourly", J.finance && J.finance.at, 6, J.finance],
-      ["Nightly backup", "2am, Peter\u2019s laptop", J.backup && J.backup.at, 50, J.backup],
-      ["9pm chat wrap", "Peter\u2019s laptop", J.chatwrap && J.chatwrap.at, 50, J.chatwrap]
+      ["Nightly backup", "2am", J.backup && J.backup.at, 50, J.backup],
+      ["9pm chat wrap", "Windows laptop", J.chatwrap && J.chatwrap.at, 50, J.chatwrap]
     ].map(([label, when, at, hours, j, kind]) => {
       const age = at ? (Date.now() - new Date(at).getTime()) / 36e5 : null;
       let state, text;
       if (!at) { state = "grey"; text = "hasn\u2019t checked in yet"; }
       else if (j && j.ok === null && kind !== "gh") { state = "amber"; text = j.msg || "waiting"; }
       else if (j && j.ok === false && kind !== "gh") { state = "red"; text = "failing: " + (j.msg || "") + " (" + ago(at) + ")"; }
-      else if (age > hours) { state = kind === "laptop" ? "amber" : "red"; text = "last ran " + ago(at) + (kind === "laptop" ? " \u2014 laptop off or asleep; GitHub covers it" : ""); }
-      else { state = "green"; text = "ran " + ago(at) + (j && j.msg && kind !== "gh" ? " \u00b7 " + j.msg : ""); }
+      else if (age > hours) { state = kind === "laptop" ? "amber" : "red"; text = "last ran " + ago(at) + (kind === "laptop" ? " \u2014 both computers off or asleep" : ""); }
+      else { state = "green"; text = "ran " + ago(at) + (kind !== "gh" ? by(j) : "") + (j && j.msg && kind !== "gh" ? " \u00b7 " + j.msg : ""); }
       return { label, when, state, text };
     });
     const bad = rows.filter((r) => r.state === "red").length;
