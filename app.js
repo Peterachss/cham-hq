@@ -2923,6 +2923,24 @@
     $("log-fab").addEventListener("click", openMoneySheet);
   })();
 
+  /* On a phone the Log money button slides away while you scroll down (it
+     would sit on top of whatever you're reading) and comes back the moment
+     you scroll up or reach the end of the page. */
+  (function fabOnScroll() {
+    let last = window.scrollY, ticking = false;
+    window.addEventListener("scroll", () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const y = window.scrollY, atEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 40;
+        if (window.innerWidth > 620 || y < 120 || atEnd || y < last - 6) document.body.classList.remove("fab-away");
+        else if (y > last + 6) document.body.classList.add("fab-away");
+        last = y;
+      });
+    }, { passive: true });
+  })();
+
   function renderFab() {
     const fab = $("log-fab");
     if (!fab) return;

@@ -1331,3 +1331,38 @@
   .au-mode.on { color: var(--jade); border-color: color-mix(in srgb, var(--jade) 45%, var(--line)); }
   .au-mode.on .au-knob { background: var(--jade); }
   .au-mode.on .au-knob::after { left: 13px; }
+
+  /* ------------------------------------------------------------------ *
+   * phone fixes
+   * ------------------------------------------------------------------ */
+  /* countdown: columns may shrink, so long job names and the money line
+     wrap inside the card instead of pushing the status tags off its edge */
+  .countdown { overflow: hidden; }
+  .cd-facts { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .cd-facts > div { min-width: 0; }
+  .cd-jobs li { min-width: 0; }
+  .cd-jobs .pill { flex: none; }
+  .cd-val, .cd-none { overflow-wrap: anywhere; }
+  @media (max-width: 780px) { .cd-facts { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 620px) {
+    .countdown { padding: 14px; }
+    .cd-main { gap: 12px; }
+    .cd-num { min-width: 58px; }
+    .cd-n { font-size: 38px; }
+    .cd-what b { font-size: 19px; }
+    .cd-jobs li { align-items: flex-start; }
+    .cd-jobs li > span:nth-child(2) { white-space: normal; overflow: visible; }
+    .cd-jobs .pill { font-size: 10px; padding: 2px 6px; margin-top: 1px; }
+
+    /* the tool buttons stay on one line and scroll sideways */
+    .tool-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+    .tool-bar::-webkit-scrollbar { display: none; }
+    .tool-btn { flex: none; font-size: 13.5px; padding: 8px 12px; }
+
+    /* a smaller Log money button, which slides away while you scroll down
+       and comes back when you scroll up - so it never sits on top of things */
+    .fab { height: 48px; padding: 0 18px 0 62px; transition: transform .22s ease, box-shadow .16s ease; }
+    .fab-label { font-size: 14px; }
+    .fab-judy { transform: scale(.86); transform-origin: 0 100%; }
+    body.fab-away .fab { transform: translateY(160%); }
+  }
