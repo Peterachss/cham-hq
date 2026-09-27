@@ -14,6 +14,7 @@ message box can't be found, it stops and says so - it never retries.
 
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,6 +33,18 @@ CONVO = """() => {
   if (box && box.innerText) t = t.replace(box.innerText, '');   // never count what is still being typed
   return t.slice(-6000);
 }"""
+
+
+def plain(text):
+    """Letters and numbers only. Instagram shows emoji as pictures, so the
+    page's text has "Chạm on Sun 27 Sep" where the message said
+    "🧾 Chạm on Sun 27 Sep" - compare without them or a sent message
+    looks unsent (and could be sent twice)."""
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text)).strip().lower()
+
+
+def in_chat(page, mark):
+    return plain(mark) in plain(page.evaluate(CONVO))
 
 
 def main():
@@ -57,7 +70,7 @@ def main():
             ctx.close()
             sys.exit(2)
 
-        if mark in page.evaluate(CONVO):
+        if in_chat(page, mark):
             w.log("send: that message is already in the chat - not sending it again")
             ctx.close()
             return
@@ -86,7 +99,7 @@ def main():
         page.wait_for_timeout(6000)
 
         still_typed = (box.inner_text() or "").strip()
-        if not still_typed and mark in page.evaluate(CONVO):
+        if not still_typed and in_chat(page, mark):
             w.log("send: sent to the group chat and confirmed")
         else:
             w.log("send: pressed send but couldn't confirm it arrived - check the chat. Not retrying.")
