@@ -787,13 +787,51 @@
   ].join("|"), "i");
   const FILLER = /^(ok(ay)?|k+|yes+|yeah+|ya|yep|yup|no+|nope|lol+|lmao+|ha(ha)+|h+a+|hha+|he(he)+|omg|same|true|fr|bruh+|nice|cool|thanks?|thank you|ty|sure|wait|what|huh|oh+|ah+|hmm+|damn|bro|guys|oh yeah( guys)?|good job|gj|gl|w|l)[.!?\s]*$/i;
 
-  function isChatter(text) {
+  /* ...and is it about Chạm at all? Its work words (English or Vietnamese),
+     an amount of money, or a word from a job or event on the board. Dates
+     and "gonna" alone don't count - the chat is full of both. The same test
+     as the 9pm wrap (CHAM_TOPIC in scripts/ig_wrap.py). */
+  const CHAM_TOPIC = new RegExp([
+    "\\bch[a\u1ea1]m\\b", "\\bhq\\b", "\\bwebsite\\b", "\\bsite\\b",
+    "\\b(sales?|bake|merch|bracelets?|cookies?|ice ?cream|raffles?|lucky draws?|fundrais\\w*|charity|donat\\w*|sponsor\\w*)\\b",
+    "\\b(events?|meetings?|agenda|booth|stall|venue|volunteer\\w*|orphanage|kids|children)\\b",
+    "\\b(posters?|flyers?|banners?|logo|designs?|canva|deck|slides?|proposals?|captions?|reels?|photoshoot|printing|stickers?|shirts?|totes?)\\b",
+    "\\b(budget|invoices?|receipts?|reimburs\\w*|profit|revenue|income|expenses?|funds?|money|prices?|costs?|paid|spent|orders?|pre-?orders?|pickup|vendors?|suppliers?|finance\\w*)\\b",
+    "\\b(jobs?|tasks?|deadline|interest form|spreadsheet|the sheet|advisor|permission)\\b",
+    "b[a\u00e1]n h[a\u00e0]ng|ti[e\u1ec1]n|quy[e\u00ea]n g[o\u00f3]p|t[a\u00e0]i tr[o\u1ee3]|s[u\u1ef1] ki[e\u1ec7]n|h[o\u1ecd]p nh[o\u00f3]m|\u0111[o\u01a1]n h[a\u00e0]ng|ng[a\u00e2]n s[a\u00e1]ch|chi ph[i\u00ed]|tr[e\u1ebb] em"
+  ].join("|"), "i");
+  const MONEY_SAID = /\d[\d.,]*\s*(k|tr|tri\u1ec7u|ngh\u00ecn|ng\u00e0n|vnd|vn\u0111|\u0111|dong|usd)(?![a-z])|\$\s*\d/i;
+  const BOARD_SKIP = new Set(("with from into about before after make have give start update plan plans list check send help "
+    + "some more what when every page each this that their ask group tab new log collect ideas people things look done open "
+    + "account activity approved baby break calendar content custom draw edit everyone figure film find finish form goal "
+    + "history idea kept lock main option over overall photo pics post problem real review role school size solve started "
+    + "summer system take track updated video report generate replacement revised organise interest time week today later "
+    + "first last next good better still").split(" "));
+  const stem = (w) => (w.length > 4 ? w.replace(/s+$/, "") : w);
+  function boardWords() {
+    const names = new Set();
+    Object.entries(PEOPLE).forEach(([k, p]) => { names.add(k); names.add(String(p.name || "").toLowerCase()); });
+    const words = new Set();
+    TASKS.map((t) => t.title).concat(EVENTS.map((e) => e.title)).forEach((title) => {
+      (String(title || "").toLowerCase().match(/[a-z\u00c0-\u1ef9]+/g) || []).forEach((w) => {
+        w = stem(w);
+        if (w.length >= 4 && !BOARD_SKIP.has(w) && !names.has(w)) words.add(w);
+      });
+    });
+    return words;
+  }
+  function aboutCham(text, board) {
+    const t = String(text);
+    if (CHAM_TOPIC.test(t) || MONEY_SAID.test(t)) return true;
+    return (t.toLowerCase().match(/[a-z\u00c0-\u1ef9]+/g) || []).some((w) => board.has(stem(w)));
+  }
+
+  function isChatter(text, board) {
     const t = String(text).trim();
     if (!t) return true;
     if (FILLER.test(t)) return true;
     if (/^@[\w.]+\s*$/.test(t)) return true;                    // a bare @mention
-    if (KEEP_SIGNAL.test(t)) return false;
-    return t.length < 28;                                       // short and signal-free
+    return !aboutCham(t, board || boardWords());
   }
 
   /** a pasted chat -> [{who, text}], attributing by the name headings */
@@ -1790,8 +1828,9 @@
           return 0;
         }
         pmsg.classList.remove("bad");
+        const board = boardWords();
         lines.forEach((entry) => {
-          const chatter = isChatter(entry.text);
+          const chatter = isChatter(entry.text, board);
           const keep = el("input", { type: "checkbox", "aria-label": "Post this line" });
           keep.checked = !chatter;
           const w = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who said it" }));
@@ -1799,7 +1838,7 @@
           const t = el("input", { class: "ad-in wide", type: "text", value: entry.text, "aria-label": "What was said" });
           const k = el("input", { type: "checkbox", "aria-label": "Highlight this one" });
           const row = el("div", { class: "draft" + (chatter ? " chatter" : "") }, [
-            el("label", { class: "ad-check keep", title: chatter ? "Looks like chatter - tick to post it anyway" : "Will be posted" }, [keep]),
+            el("label", { class: "ad-check keep", title: chatter ? "Not about Cham - tick to post it anyway" : "Will be posted" }, [keep]),
             w, t,
             el("label", { class: "ad-check" }, [k, el("span", { text: "highlight" })])
           ]);
@@ -1808,8 +1847,8 @@
           drafts.appendChild(row);
         });
         const guessed = lines.filter((l) => l.who !== "team").length;
-        const chat = lines.filter((l) => isChatter(l.text)).length;
-        pmsg.textContent = (lines.length - chat) + " worth keeping, " + chat + " look like chatter and are un-ticked. "
+        const chat = lines.filter((l) => isChatter(l.text, board)).length;
+        pmsg.textContent = (lines.length - chat) + " about Chạm, " + chat + " aren't and are un-ticked. "
           + guessed + " of " + lines.length + " matched to a person \u2014 check the names, then post.";
         return lines.length;
     }

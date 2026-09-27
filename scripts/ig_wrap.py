@@ -295,6 +295,10 @@ are mixed in with the real messages.
 Turn it into feed lines.
 
 Rules:
+- Only Chạm's work: jobs, sales, merch, fundraising, sponsors, money, meetings,
+  events, designs and posts, the website. Leave out everything else - jokes,
+  gossip, food, school, plans that have nothing to do with Chạm - even if it
+  has a date or a number in it.
 - One line per thing that actually happened. Drop greetings, reactions, emoji-only
   messages, and anything that is not a decision, a commitment, a blocker, a number
   or a date.
@@ -354,6 +358,54 @@ IG_UI = re.compile(r"^(home|reels|messages|search|explore|notifications|create|p
                    r"\d+\s*[smhdw]|\d+\s*(min|mins|hour|hours|day|days|week|weeks)( ago)?)$", re.I)
 
 
+# What makes a message about Chạm rather than about lunch: its work words
+# (English and Vietnamese), an amount of money, or a word from the name of
+# a job or event on the board tonight. Dates and "gonna" alone don't count -
+# the chat is full of both.
+CHAM_TOPIC = re.compile("|".join([
+    r"\bch[aạ]m\b", r"\bhq\b", r"\bwebsite\b", r"\bsite\b",
+    r"\b(sales?|bake|merch|bracelets?|cookies?|ice ?cream|raffles?|lucky draws?|fundrais\w*|charity|donat\w*|sponsor\w*)\b",
+    r"\b(events?|meetings?|agenda|booth|stall|venue|volunteer\w*|orphanage|kids|children)\b",
+    r"\b(posters?|flyers?|banners?|logo|designs?|canva|deck|slides?|proposals?|captions?|reels?|photoshoot|printing|stickers?|shirts?|totes?)\b",
+    r"\b(budget|invoices?|receipts?|reimburs\w*|profit|revenue|income|expenses?|funds?|money|prices?|costs?|paid|spent|orders?|pre-?orders?|pickup|vendors?|suppliers?|finance\w*)\b",
+    r"\b(jobs?|tasks?|deadline|interest form|spreadsheet|the sheet|advisor|permission)\b",
+    r"b[aá]n h[aà]ng|ti[eề]n|quy[eê]n g[oó]p|t[aà]i tr[oợ]|s[uự] ki[eệ]n|h[oọ]p nh[oó]m|đ[oơ]n h[aà]ng|ng[aâ]n s[aá]ch|chi ph[ií]|tr[eẻ] em",
+]), re.I)
+MONEY = re.compile(r"\d[\d.,]*\s*(k|tr|triệu|nghìn|ngàn|vnd|vnđ|đ|dong|usd)\b|\$\s*\d", re.I)
+BOARD_SKIP = {
+    "with", "from", "into", "about", "before", "after", "make", "have", "give", "start", "update", "plan", "plans",
+    "list", "check", "send", "help", "some", "more", "what", "when", "every", "page", "each", "this", "that", "their",
+    "ask", "group", "tab", "new", "log", "collect", "ideas", "people", "things", "look", "done", "open",
+    # everyday words that turn up in job titles and in banter alike
+    "account", "activity", "approved", "baby", "break", "calendar", "content", "custom", "draw", "edit", "everyone",
+    "figure", "film", "find", "finish", "form", "goal", "history", "idea", "kept", "lock", "main", "option", "over",
+    "overall", "photo", "pics", "post", "problem", "real", "review", "role", "school", "size", "solve", "started",
+    "summer", "system", "take", "track", "updated", "video", "report", "generate", "replacement", "revised",
+    "organise", "interest", "time", "week", "today", "later", "first", "last", "next", "good", "better", "still"}
+
+
+def board_words(tasks, events, people):
+    """Distinctive words from the jobs and events on the board, e.g. "photos"
+    from "Update member photos on website", so talk about them counts."""
+    names = {x.lower() for x in list(people.keys()) + list(people.values())}
+    words = set()
+    for title in [t.get("title", "") for t in tasks] + [e.get("name", "") for e in events]:
+        for w in re.findall(rf"[{LETTERS}]+", str(title).lower()):
+            w = w.rstrip("s") if len(w) > 4 else w
+            if len(w) >= 4 and w not in BOARD_SKIP and w not in names:
+                words.add(w)
+    return words
+
+
+def is_cham(t, board=()):
+    if CHAM_TOPIC.search(t) or MONEY.search(t):
+        return True
+    for w in re.findall(rf"[{LETTERS}]+", t.lower()):
+        if (w.rstrip("s") if len(w) > 4 else w) in board:
+            return True
+    return False
+
+
 def is_noise(t):
     t = t.strip()
     if len(t) < 2 or not re.search(r"[a-z\u00c0-\u1ef9\d]", t, re.I):
@@ -402,7 +454,7 @@ def people_names(cfg):
         return {k: k.title() for k in PEOPLE_KEYS if k != "team"}
 
 
-def summarise_plain(cfg, rows):
+def summarise_plain(cfg, rows, board=()):
     people = people_names(cfg)
     out, current = [], "team"
     for block in rows:
@@ -425,15 +477,18 @@ def summarise_plain(cfg, rows):
                 continue
             out.append({"who": current, "text": line})
     # the same message scraped twice (Instagram repeats rows as it scrolls)
+    # and only what is about Chạm - the rest never reaches the review card
     seen, uniq = set(), []
     for o in out:
         sig = (o["who"], o["text"])
         if sig not in seen:
             seen.add(sig)
-            o["keep"] = not is_chatter(o["text"])
+            if FILLER.match(o["text"].strip()) or not is_cham(o["text"], board):
+                continue
+            o["keep"] = True
             o["key"] = False
             uniq.append(o)
-    log(f"summarise (no model): {len(uniq)} lines, {sum(o['keep'] for o in uniq)} worth keeping")
+    log(f"summarise (no model): {len(seen)} messages read, {len(uniq)} about Chạm")
     return uniq
 
 
@@ -442,9 +497,9 @@ def has_real_key(cfg):
     return k.startswith("sk-ant-") and "PUT" not in k
 
 
-def summarise(cfg, rows):
+def summarise(cfg, rows, board=()):
     if not has_real_key(cfg):
-        return summarise_plain(cfg, rows)
+        return summarise_plain(cfg, rows, board)
     import anthropic
 
     chat = "\n".join(rows)[: int(cfg.get("max_chars", 60000))]
@@ -764,10 +819,12 @@ def main():
         return
 
     # simple asks in the chat, as proposals for an admin to apply
-    reqs = []
+    reqs, board, db = [], set(), None
     try:
         db = firestore(cfg)
         tasks, events = load_board(db)
+        base = (db.collection("site").document("data").get().to_dict() or {}).get("TASKS") or []
+        board = board_words(tasks + [t for t in base if isinstance(t, dict)], events, people_names(cfg))
         reqs = find_requests(rows, dt.date.fromisoformat(today), people_names(cfg), tasks, events)
         for r in reqs:
             log("  request: " + r["summary"] + "  <- " + r["text"][:60])
@@ -776,10 +833,17 @@ def main():
     except Exception:
         log("requests: skipped:\n" + traceback.format_exc())      # never lose the wrap over this
 
-    lines = summarise(cfg, rows)
+    lines = summarise(cfg, rows, board)
     if not lines:
-        log("nothing worth posting today")
-        status.beat("chatwrap", True, "ran - nothing worth posting today" + (f", {len(reqs)} request(s)" if reqs else ""))
+        log("nothing about Chạm in the chat today")
+        if db is not None and not args.dry_run:
+            # an earlier run tonight may have left a draft full of chatter: retire it
+            ref = db.collection("chatDrafts").document(today)
+            old = ref.get()
+            if old.exists and (old.to_dict() or {}).get("status") == "pending":
+                ref.update({"status": "discarded", "note": "nothing about Chạm today"})
+                log("retired tonight's earlier draft")
+        status.beat("chatwrap", True, "ran - nothing about Chạm today" + (f", {len(reqs)} request(s)" if reqs else ""))
         return
 
     for ln in lines:
