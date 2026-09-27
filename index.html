@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=62" />
+<link rel="stylesheet" href="styles.css?v=63" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -72,6 +72,7 @@
   </section>
 
   <section id="view-updates" role="tabpanel" aria-labelledby="tab-updates" tabindex="0">
+    <div id="polls" class="polls"></div>
     <div id="countdown" class="countdown" hidden></div>
     <div id="chat-drafts"></div>
 
@@ -81,6 +82,7 @@
       <div class="tool" data-tool="post"><div id="upd-admin" class="admin" hidden></div></div>
       <div class="tool" data-tool="requests"><div id="chat-requests" class="admin requests" hidden></div></div>
       <div class="tool" data-tool="announce"><div id="announce" class="announce" hidden></div></div>
+      <div class="tool" data-tool="poll"><div id="poll-new" class="admin" hidden></div></div>
       <div class="tool" data-tool="notify"><div id="whos-on" class="whos-on" hidden></div></div>
       <div class="tool" data-tool="system"><div id="system" class="whos-on" hidden></div></div>
     </div>
@@ -195,7 +197,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=62" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=63" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -216,8 +218,8 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=62"></script>
-<script src="app.js?v=62"></script>
-<script type="module" src="live.js?v=62"></script>
+<script src="firebase-config.js?v=63"></script>
+<script src="app.js?v=63"></script>
+<script type="module" src="live.js?v=63"></script>
 </body>
 </html>

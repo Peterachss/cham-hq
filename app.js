@@ -126,7 +126,7 @@
   let DRAFTS = null;
   let ANNOUNCES = null;
   let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
-  let SYS = null, OB = null, OUTBOX = null, REQUESTS = null;
+  let SYS = null, OB = null, OUTBOX = null, REQUESTS = null, POLLS = null, VOTES = null;
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -217,6 +217,8 @@
       return ADMIN_ON;
     },
     setAnnouncements(rows) { ANNOUNCES = rows; renderAnnounce(); },
+    setPolls(rows) { POLLS = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderPolls(); },
+    setVotes(rows) { VOTES = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderPolls(); },
     setRequests(rows) { REQUESTS = Array.isArray(rows) ? rows : null; if (S.view === "updates") { renderRequests(); renderToolbar(); } },
     setOutbox(rows) { OUTBOX = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderDrafts(); },
     personName: (k) => (PEOPLE[k] ? PEOPLE[k].name : null),
@@ -234,7 +236,7 @@
   function resetPanels() {
     ["task-filters","status-filters","upd-filters","photo-filters",
      "upd-admin","admin-panel","photo-add","money-add","money-tools","money-filters","announce","sales","sponsors","meetings",
-     "whos-on","me","system","countdown","tool-bar","chat-requests"].forEach((id) => {
+     "whos-on","me","system","countdown","tool-bar","chat-requests","polls","poll-new"].forEach((id) => {
       const n = $(id); if (n) n.replaceChildren();
     });
   }
@@ -531,7 +533,7 @@
     renderGlance();
     renderNotify();
     renderFab();
-    if (S.view === "updates") { renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderRequests(); renderFeed(); renderUpdateAdmin(); renderToolbar(); }
+    if (S.view === "updates") { renderPolls(); renderPollNew(); renderCountdown(); renderAnnounce(); renderWhosOn(); renderSystem(); renderDrafts(); renderRequests(); renderFeed(); renderUpdateAdmin(); renderToolbar(); }
     if (S.view === "me") renderMe();
     if (S.view === "calendar") { renderMeetings(); renderCalendar(); }
     if (S.view === "sponsors") renderSponsors();
@@ -925,6 +927,153 @@
       DRAFT_CARDS.set(d.id, { sig, node: card });
       box.appendChild(card);
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Quick polls. An admin asks from the toolbar; everyone gets a push and
+   * sees open polls at the top of Updates, votes with one tap, and can
+   * change their vote until it closes. Results are bars. Admins see who
+   * hasn't answered by name; everyone else sees how many.
+   * ------------------------------------------------------------------ */
+  const pollEnd = (p) => p.closedAt || (p.status === "closed" ? p.at : p.closesAt);
+  const pollIsOpen = (p) => p.status === "open" && (!p.closesAt || p.closesAt.getTime() > Date.now());
+  const everyoneKeys = () => Object.keys(PEOPLE).filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || ""));
+  function pollTally(p) {
+    const votes = (VOTES || []).filter((v) => v.poll === p.id && v.choice >= 0 && v.choice < p.options.length);
+    const counts = p.options.map((_, i) => votes.filter((v) => v.choice === i).length);
+    return { votes, counts, total: votes.length, mine: SESSION ? votes.find((v) => v.email === SESSION.email) : null };
+  }
+  function pollResult(p) {
+    const { counts, total } = pollTally(p);
+    if (!total) return "nobody answered";
+    const top = Math.max(...counts), win = p.options.filter((_, i) => counts[i] === top);
+    return win.length > 1 ? win.join(" and ") + " tied (" + top + " each)" : win[0] + " (" + top + " of " + total + " vote" + (total === 1 ? "" : "s") + ")";
+  }
+
+  function renderPolls() {
+    const box = $("polls");
+    if (!box) return;
+    if (!SESSION || !POLLS || !VOTES) { box.replaceChildren(); return; }
+    // open ones, and ones that closed in the last two days (so people see how it came out)
+    const shown = POLLS.filter((p) => pollIsOpen(p) || (pollEnd(p) && Date.now() - pollEnd(p).getTime() < 2 * 864e5))
+      .sort((a, b) => Number(pollIsOpen(b)) - Number(pollIsOpen(a)) || b.at - a.at);
+    const admin = Boolean(SESSION.admin);
+    // redraw the moment the next open poll reaches its closing time
+    clearTimeout(renderPolls.timer);
+    const next = Math.min(...shown.filter((p) => pollIsOpen(p) && p.closesAt).map((p) => p.closesAt.getTime() - Date.now()));
+    if (isFinite(next)) renderPolls.timer = setTimeout(renderPolls, Math.min(next + 500, 2 ** 31 - 1));
+    box.replaceChildren(...shown.map((p) => {
+      const open = pollIsOpen(p);
+      const { votes, counts, total, mine } = pollTally(p);
+      const voters = new Set(votes.map((v) => v.who));
+      const all = everyoneKeys(), notYet = all.filter((k) => !voters.has(k));
+      const answered = all.filter((k) => voters.has(k)).length;
+      const byName = PEOPLE[p.by] ? PEOPLE[p.by].name : "An admin";
+      const when = open ? (p.closesAt ? "closes " + relDay(isoDay(p.closesAt)) : "open") : "closed \u00b7 " + pollResult(p);
+      const opts = p.options.map((o, i) => {
+        const pct = total ? Math.round(counts[i] / total * 100) : 0;
+        const isMine = Boolean(mine && mine.choice === i);
+        const bar = el("span", { class: "poll-bar", "aria-hidden": "true" });
+        bar.style.width = pct + "%";
+        return el("button", { class: "poll-opt" + (isMine ? " mine" : ""), type: "button", disabled: !open,
+          "aria-pressed": String(isMine), "aria-label": o + ", " + counts[i] + " vote" + (counts[i] === 1 ? "" : "s") + (isMine ? ", your vote" : ""),
+          onclick: async (e) => {
+            if (!open || isMine) return;
+            const group = e.currentTarget.parentNode;
+            group.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+            try { await window.ChamLive.vote(p.id, i, SESSION.personKey); }
+            catch (err) { toast("Your vote didn\u2019t save. " + (err.code || err.message)); group.querySelectorAll("button").forEach((b) => { b.disabled = false; }); }
+          } }, [bar,
+          el("span", { class: "poll-o", text: (isMine ? "\u2713 " : "") + o }),
+          el("span", { class: "poll-n", text: total ? counts[i] + " \u00b7 " + pct + "%" : "" })]);
+      });
+      const who = admin ? (notYet.length ? "Not answered yet: " + notYet.map((k) => PEOPLE[k].name).join(", ") : "Everyone has answered")
+        : (notYet.length ? notYet.length + (notYet.length === 1 ? " person hasn\u2019t" : " people haven\u2019t") + " answered yet" : "Everyone has answered");
+      const close = admin && open && p.status === "open" ? el("button", { class: "act ghost", type: "button", text: "Close poll", onclick: async (e) => {
+        const b = e.currentTarget;
+        if (!tapTwice(b, "Tap again to close")) return;
+        b.disabled = true;
+        try {
+          await window.ChamLive.closePoll(p.id);
+          logActivity({ who: SESSION.personKey, ref: p.id, event: "pollclosed", text: "\ud83d\udcca Poll closed: **" + p.question + "** \u2192 " + pollResult(p) });
+        } catch (err) { b.disabled = false; toast("Didn\u2019t close. " + (err.code || err.message)); }
+      } }) : null;
+      return el("section", { class: "card poll" + (open ? "" : " closed") }, [
+        el("div", { class: "poll-head" }, [
+          el("span", { class: "poll-ic", "aria-hidden": "true", text: "\ud83d\udcca" }),
+          el("div", { class: "poll-id" }, [el("b", { class: "poll-q", text: p.question }),
+            el("span", { class: "poll-sub", text: byName + " asks \u00b7 " + when })])
+        ]),
+        el("div", { class: "poll-opts", role: "group", "aria-label": p.question }, opts),
+        el("div", { class: "poll-foot" }, [
+          el("span", { text: answered + " of " + all.length + " answered" + (open ? (mine ? " \u00b7 tap another option to change your vote" : " \u00b7 tap one to vote") : "") }),
+          el("span", { class: "poll-who", text: who }),
+          close
+        ])
+      ]);
+    }));
+  }
+
+  function renderPollNew() {
+    const box = $("poll-new");
+    if (!box) return;
+    const on = Boolean(SESSION && SESSION.admin && window.ChamLive && window.ChamLive.createPoll);
+    box.hidden = !on;
+    if (!on) { box.replaceChildren(); return; }
+    if (box.childElementCount) return;
+
+    const q = el("input", { class: "ad-in wide poll-new-q", type: "text", maxlength: "200", placeholder: "Question, e.g. Sale on Friday or Saturday?", "aria-label": "Question" });
+    const opts = el("div", { class: "poll-new-opts" });
+    const more = el("button", { class: "act ghost", type: "button", text: "+ Add an option" });
+    const addOpt = (focus) => {
+      const i = opts.children.length;
+      const inp = el("input", { class: "ad-in wide", type: "text", maxlength: "80", placeholder: "Option " + (i + 1), "aria-label": "Option " + (i + 1) });
+      const row = el("div", { class: "sf-row" }, [inp, i >= 2 ? el("button", { class: "an-x", type: "button", text: "\u00d7", "aria-label": "Remove this option",
+        onclick: () => { row.remove(); more.hidden = false; } }) : null]);
+      opts.appendChild(row);
+      more.hidden = opts.children.length >= 5;
+      if (focus) inp.focus();
+    };
+    more.addEventListener("click", () => addOpt(true));
+    const closes = el("input", { class: "ad-in", type: "date", min: TODAY, "aria-label": "Closes on (optional)" });
+    const msg = el("span", { class: "ad-msg" });
+    const reset = () => { q.value = ""; closes.value = ""; opts.replaceChildren(); addOpt(); addOpt(); };
+    const ask = el("button", { class: "au-go", type: "button", text: "Ask everyone", onclick: async () => {
+      msg.classList.remove("bad"); msg.textContent = "";
+      const question = q.value.trim().replace(/\s+/g, " ");
+      const options = [...opts.querySelectorAll("input")].map((i) => i.value.trim().replace(/\s+/g, " ")).filter(Boolean);
+      const bad = (t) => { msg.textContent = t; msg.classList.add("bad"); };
+      if (!question) return bad("Type the question first.");
+      if (options.length < 2) return bad("Give it at least two options.");
+      if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) return bad("Two of the options are the same.");
+      if (closes.value && closes.value < TODAY) return bad("The closing day has already gone.");
+      if (!tapTwice(ask, "Tap again to ask everyone \u2192")) return;
+      ask.disabled = true;
+      const me = SESSION.personKey, name = PEOPLE[me] ? PEOPLE[me].name : me;
+      let id;
+      try {
+        id = await window.ChamLive.createPoll({ question, options, by: me, byName: name,
+          closesAt: closes.value ? new Date(closes.value + "T23:59:59+07:00") : null });
+      } catch (err) { ask.disabled = false; return bad("Didn\u2019t save. " + (err.code || err.message)); }
+      logActivity({ who: me, ref: id, event: "poll", text: "\ud83d\udcca Asked everyone: **" + question + "**" });
+      try { await window.ChamLive.announcePoll(id, question, me, name); toast("Poll is up \u2014 phones buzz in a few seconds"); }
+      catch (err) { toast("Poll is up, but the notification didn\u2019t go. " + (err.code || err.message)); }
+      ask.disabled = false; reset();
+      TOOL_OPEN = null;
+      try { localStorage.removeItem("cham-tool"); } catch (e) {}
+      renderToolbar();
+    } });
+    reset();
+    box.append(
+      el("div", { class: "an-head" }, [
+        el("span", { class: "an-ic", "aria-hidden": "true", text: "\ud83d\udcca" }),
+        el("div", {}, [el("h3", { class: "an-h", text: "Quick poll" }),
+          el("p", { class: "an-sub", text: "Everyone gets a notification and votes in one tap at the top of Updates. Admins only." })])
+      ]),
+      q, opts, more,
+      el("label", { class: "sp-lbl" }, [document.createTextNode("Closes on (optional) "), closes]),
+      el("div", { class: "sf-row" }, [msg, ask])
+    );
   }
 
   /* ------------------------------------------------------------------ *
@@ -1469,6 +1618,7 @@
       ["post", "\u270d\ufe0f Post an update", avail("upd-admin"), ""],
       ["requests", "\ud83d\udce5 From the chat", avail("chat-requests"), REQUESTS && REQUESTS.length ? REQUESTS.length + " request" + (REQUESTS.length === 1 ? "" : "s") : ""],
       ["announce", "\ud83d\udce3 Announce", avail("announce"), ""],
+      ["poll", "\ud83d\udcca Poll", avail("poll-new"), ""],
       ["notify", "\ud83d\udd14 Notifications", avail("whos-on"), ppl.length ? onN + "/" + ppl.length : ""],
       ["system", sysBad ? "\u26a0\ufe0f Background jobs" : "\u2699\ufe0f Background jobs", avail("system"), sysBad ? "needs a look" : "ok"]
     ].filter((t) => t[2]);
@@ -1555,7 +1705,7 @@
       list.appendChild(el("li", { class: "an-item" + (a.status === "sent" ? " sent" : "") + (missed ? " missed" : "") }, [
         el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by)
           + (nudge ? " \ud83d\udc49 nudged " + toName : "") + " \u00b7 " + when }),
-        el("span", { class: "an-t", text: a.text }),
+        el("span", { class: "an-t", text: (a.kind === "poll" ? "\ud83d\udcca " : "") + a.text }),
         el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state }),
         a.status === "sent" ? el("button", { class: "an-x", type: "button", "aria-label": "Hide this", title: "Hide this",
           text: "\u00d7", onclick: () => { anHide(a.id); renderAnnounce(); } }) : null

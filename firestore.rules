@@ -133,6 +133,47 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Quick polls. Admins ask (2 to 5 options, maybe a closing time) and
+    // close them; everyone sees them.
+    match /polls/{pollId} {
+      function p() { return request.resource.data; }
+      function opt(i) { return p().options.size() <= i || (p().options[i] is string && p().options[i].size() > 0 && p().options[i].size() <= 80); }
+      allow read:   if isMember();
+      allow create: if isAdmin()
+                    && p().keys().hasOnly(['question', 'options', 'closesAt', 'status', 'by', 'byName', 'createdBy', 'createdAt'])
+                    && p().question is string && p().question.size() > 0 && p().question.size() <= 200
+                    && p().options is list && p().options.size() >= 2 && p().options.size() <= 5
+                    && opt(0) && opt(1) && opt(2) && opt(3) && opt(4)
+                    && (p().get('closesAt', null) == null || p().closesAt is timestamp)
+                    && p().status == 'open'
+                    && p().by == me().personKey
+                    && p().createdBy == email()
+                    && p().createdAt == request.time;
+      allow update: if isAdmin()
+                    && p().diff(resource.data).affectedKeys().hasOnly(['status', 'closedAt', 'closedBy'])
+                    && resource.data.status == 'open' && p().status == 'closed';
+      allow delete: if isAdmin();
+    }
+
+    // Votes: one per person per poll (the id is poll_email), only your
+    // own, only while the poll is open, and you can change it until then.
+    match /pollVotes/{voteId} {
+      function v()    { return request.resource.data; }
+      function poll() { return get(/databases/$(database)/documents/polls/$(v().poll)).data; }
+      allow read:           if isMember();
+      allow create, update: if isMember()
+                            && v().keys().hasOnly(['poll', 'who', 'choice', 'at'])
+                            && v().poll is string
+                            && voteId == v().poll + '_' + email()
+                            && v().who == me().personKey
+                            && exists(/databases/$(database)/documents/polls/$(v().poll))
+                            && poll().status == 'open'
+                            && (poll().get('closesAt', null) == null || request.time < poll().closesAt)
+                            && v().choice is int && v().choice >= 0 && v().choice < poll().options.size()
+                            && v().at == request.time;
+      allow delete:         if isAdmin();
+    }
+
     // The Announce box, and Nudge on a job. Admins file a message under
     // their own name as "pending"; the sender (service account) pushes it -
     // to everyone, or for a nudge (with "to") to that one person - and marks
@@ -155,6 +196,9 @@ service cloud.firestore {
                           && request.resource.data.to.size() > 0
                           && request.resource.data.to != me().personKey)
                       || (kind() == 'test' && request.resource.data.to == me().personKey)
+                      || (isAdmin() && kind() == 'poll'
+                          && request.resource.data.poll is string
+                          && exists(/databases/$(database)/documents/polls/$(request.resource.data.poll)))
                        );
       allow update, delete: if false;
     }

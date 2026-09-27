@@ -19,7 +19,9 @@ still goes out if this watcher is not running - just not straight away.
 A nudge (an admin tapping Nudge on somebody's job) is the same thing with
 a "to": it goes to that one person only, as "👉 Bach nudged you". A "test"
 is anybody pressing "Send me a test": it goes to every device of theirs,
-and sentTo says how many, so the site can tell them.
+and sentTo says how many, so the site can tell them. A "poll" is an admin
+asking a quick question on the Updates tab: it goes to everyone but them,
+as "📊 Bach asks", and opens the Updates tab where they vote.
 
 A message is claimed in a transaction before sending, so two senders
 running at once can never push the same announcement twice.
@@ -110,12 +112,15 @@ def send_pending(db, key, dry=False, say=log):
                 people = 1
             say(f"nudge from {name} -> {to}: {'delivered' if people else 'NOT delivered (notifications off)'}: {text[:60]}")
         else:
+            poll = a.get("kind") == "poll"
+            title = ("📊 " + name + " asks") if poll else ("📣 " + name)
+            body = (text + " Tap to answer.")[:300] if poll else text
             for who, s in subs.items():
                 if who == by:
                     continue                            # you don't need your own message
-                if P.send(s, "📣 " + name, text, url="./#updates", tag="announce-" + d.id, urgent=True):
+                if P.send(s, title, body, url="./#updates", tag=("poll-" if poll else "announce-") + d.id, urgent=True):
                     people += 1
-            say(f"announcement from {name} -> {people} people ({P.sent} devices, {P.failed} failed): {text[:60]}")
+            say(f"{'poll' if poll else 'announcement'} from {name} -> {people} people ({P.sent} devices, {P.failed} failed): {text[:60]}")
         if not dry:
             d.reference.update({"status": "sent", "sentAt": firestore.SERVER_TIMESTAMP,
                                 "sentTo": people, "devices": P.sent, "failed": P.failed})

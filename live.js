@@ -72,6 +72,7 @@ if (!CONFIGURED) {
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
   let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null, unsubOutbox = null, unsubRequests = null;
+  let unsubPolls = null, unsubVotes = null, votesFor = "";
 
   /* ----- the sign-in bar ------------------------------------------ */
   /* While Firebase restores a saved login (a few seconds on a slow
@@ -223,6 +224,9 @@ if (!CONFIGURED) {
     if (unsubEvents) { unsubEvents(); unsubEvents = null; }
     if (unsubOutbox) { unsubOutbox(); unsubOutbox = null; }
     if (unsubRequests) { unsubRequests(); unsubRequests = null; }
+    if (unsubPolls) { unsubPolls(); unsubPolls = null; }
+    if (unsubVotes) { unsubVotes(); unsubVotes = null; }
+    votesFor = "";
 
     if (!user) {
       // Signing out wipes the page: reload, so nothing a member saw stays in memory.
@@ -459,6 +463,38 @@ if (!CONFIGURED) {
         window.ChamHQ.setEventsDb(rows);
       },
       () => window.ChamHQ.setEventsDb(null));
+
+    // quick polls: the last ten, and the votes in just those
+    unsubPolls = onSnapshot(query(collection(db, "polls"), orderBy("createdAt", "desc"), limit(10)),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({ id: d.id, question: v.question || "", options: Array.isArray(v.options) ? v.options : [],
+            status: v.status === "closed" ? "closed" : "open", by: v.by || "",
+            closesAt: v.closesAt && v.closesAt.toDate ? v.closesAt.toDate() : null,
+            closedAt: v.closedAt && v.closedAt.toDate ? v.closedAt.toDate() : null,
+            at: v.createdAt && v.createdAt.toDate ? v.createdAt.toDate() : new Date() });
+        });
+        window.ChamHQ.setPolls(rows);
+        const ids = rows.map((r) => r.id);
+        if (ids.slice().sort().join(",") === votesFor) return;
+        votesFor = ids.slice().sort().join(",");
+        if (unsubVotes) { unsubVotes(); unsubVotes = null; }
+        if (!ids.length) { window.ChamHQ.setVotes([]); return; }
+        unsubVotes = onSnapshot(query(collection(db, "pollVotes"), where("poll", "in", ids)),
+          (vs) => {
+            const votes = [];
+            vs.forEach((d) => {
+              const v = d.data();
+              if (typeof v.choice === "number") votes.push({ id: d.id, poll: v.poll, who: v.who || "", choice: v.choice,
+                email: d.id.slice(String(v.poll).length + 1) });
+            });
+            window.ChamHQ.setVotes(votes);
+          },
+          (err) => { console.error("Chạm HQ: lost the poll votes", err); window.ChamHQ.setVotes(null); });
+      },
+      (err) => { console.error("Chạm HQ: lost the polls", err); window.ChamHQ.setPolls(null); });
 
     // your own getting-started checklist
     unsubOnboard = onSnapshot(doc(db, "onboarding", session.email),
@@ -718,6 +754,29 @@ if (!CONFIGURED) {
     async setOutboxStatus(id, status) {
       await updateDoc(doc(db, "outbox", id), { status, updatedAt: serverTimestamp(),
         updatedBy: auth.currentUser ? auth.currentUser.email.toLowerCase() : null });
+    },
+    async createPoll(p) {
+      const ref = await addDoc(collection(db, "polls"), {
+        question: p.question, options: p.options, closesAt: p.closesAt || null, status: "open",
+        by: p.by, byName: p.byName || "", createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
+      });
+      return ref.id;
+    },
+    /* the push to everyone: the sender (announce.py) sends it within seconds */
+    async announcePoll(pollId, text, by, byName) {
+      await addDoc(collection(db, "announcements"), {
+        kind: "poll", poll: pollId, text, by, byName: byName || "", status: "pending",
+        createdBy: auth.currentUser.email.toLowerCase(), createdAt: serverTimestamp()
+      });
+    },
+    async closePoll(id) {
+      await updateDoc(doc(db, "polls", id), { status: "closed", closedAt: serverTimestamp(),
+        closedBy: auth.currentUser.email.toLowerCase() });
+    },
+    /* your vote, under your own email - voting again just changes it */
+    async vote(pollId, choice, who) {
+      const me = auth.currentUser.email.toLowerCase();
+      await setDoc(doc(db, "pollVotes", pollId + "_" + me), { poll: pollId, who, choice, at: serverTimestamp() });
     },
     async setRequestStatus(id, status) {
       await updateDoc(doc(db, "requests", id), { status, reviewedAt: serverTimestamp(),

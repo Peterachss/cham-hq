@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from "@firebase/rules-unit-testing";
 import {
-  doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where
+  doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, query, where, Timestamp
 } from "firebase/firestore";
 
 const RULES = readFileSync(process.env.RULES || "C:/Users/peter/cham-hq/firestore.rules", "utf8");
@@ -52,6 +52,11 @@ async function seed() {
     await setDoc(doc(db, "requests", "r-1"), { date: "2026-09-27", who: "bach", text: "move the sale to the 7th",
       change: { type: "event_date", eventId: "e1", date: "2026-10-07" }, status: "pending" });
     await setDoc(doc(db, "requests", "r-done"), { date: "2026-09-26", who: "bach", text: "x", change: {}, status: "applied" });
+    await setDoc(doc(db, "polls", "p-open"), { question: "Which day?", options: ["Fri", "Sat", "Sun"], status: "open", by: "bach", closesAt: null });
+    await setDoc(doc(db, "polls", "p-shut"), { question: "Old?", options: ["Yes", "No"], status: "closed", by: "bach", closesAt: null });
+    await setDoc(doc(db, "polls", "p-past"), { question: "Past its time?", options: ["Yes", "No"], status: "open", by: "bach",
+      closesAt: Timestamp.fromMillis(Date.now() - 3600e3) });
+    await setDoc(doc(db, "pollVotes", "p-open_" + EMILY), { poll: "p-open", who: "emily", choice: 0 });
     await setDoc(doc(db, "orders", "o-1"), { sale: "s-open", name: "Minh", cls: "10A", items: { v: 2 }, pay: "cash",
       code: "A7K2", paid: false, pickedUp: false, pushed: false });
   });
@@ -68,6 +73,10 @@ const ORD = (extra = {}) => ({ sale: "s-open", name: "Minh", cls: "10A", contact
 
 const OUT = (by, key, extra = {}) => ({ kind: "nightly", date: "2026-09-27", text: "🧾 Chạm on Sun 27 Sep\n• Sale moved\nUpdates tab: peterachss.github.io/cham-hq",
   by: key, byName: "x", createdBy: by, status: "pending", createdAt: serverTimestamp(), ...extra });
+
+const POLL = (by, key, extra = {}) => ({ question: "Sale on Friday or Saturday?", options: ["Friday", "Saturday"], closesAt: null,
+  status: "open", by: key, byName: "x", createdBy: by, createdAt: serverTimestamp(), ...extra });
+const VOTE = (poll, key, choice, extra = {}) => ({ poll, who: key, choice, at: serverTimestamp(), ...extra });
 
 const EXP = (by, extra = {}) => ({ kind: "out", amount: 250000, description: "Beads", category: "Events",
   status: "new", createdBy: by, receipt: "", ...extra });
@@ -264,6 +273,43 @@ const cases = [
   ["a dealt-with request stays dealt with",  false, () => updateDoc(doc(as(PETER), "requests/r-done"), { status: "dismissed" })],
   ["nobody on the site files a request",     false, () => setDoc(doc(as(PETER), "requests/r-new"), { status: "pending", change: {} })],
   ["nobody deletes a request",               false, () => deleteDoc(doc(as(PETER), "requests/r-1"))],
+
+  // ---------------------------------------------------------------- polls
+  ["admin asks a poll",                      true,  () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach"))],
+  ["admin asks one with a closing time",     true,  () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { closesAt: Timestamp.fromMillis(Date.now() + 864e5) }))],
+  ["member cannot ask a poll",               false, () => addDoc(collection(as(EMILY), "polls"), POLL(EMILY, "emily"))],
+  ["cannot ask one as someone else",         false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "peter"))],
+  ["a poll needs at least 2 options",        false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { options: ["Only"] }))],
+  ["a poll has at most 5 options",           false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { options: ["a", "b", "c", "d", "e", "f"] }))],
+  ["no empty options",                       false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { options: ["a", "b", ""] }))],
+  ["options must be words",                  false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { options: ["a", 2] }))],
+  ["no empty question",                      false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { question: "" }))],
+  ["cannot open one already closed",         false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { status: "closed" }))],
+  ["closing time must be a time",            false, () => addDoc(collection(as(BACH), "polls"), POLL(BACH, "bach", { closesAt: "friday" }))],
+  ["member reads polls",                     true,  () => getDocs(collection(as(EMILY), "polls"))],
+  ["stranger cannot read polls",             false, () => getDocs(collection(as(STRANGER), "polls"))],
+  ["admin closes a poll",                    true,  () => updateDoc(doc(as(PETER), "polls/p-open"), { status: "closed", closedAt: serverTimestamp(), closedBy: PETER })],
+  ["member cannot close a poll",             false, () => updateDoc(doc(as(EMILY), "polls/p-open"), { status: "closed" })],
+  ["admin cannot change the options",        false, () => updateDoc(doc(as(PETER), "polls/p-open"), { options: ["Fri", "Sat", "Mon"] })],
+  ["a closed poll stays closed",             false, () => updateDoc(doc(as(PETER), "polls/p-shut"), { status: "open" })],
+  ["member votes",                           true,  () => setDoc(doc(as(THUAN), "pollVotes", "p-open_" + THUAN), VOTE("p-open", "thuan", 1))],
+  ["member changes their vote",              true,  () => setDoc(doc(as(EMILY), "pollVotes", "p-open_" + EMILY), VOTE("p-open", "emily", 2))],
+  ["cannot vote for someone else",           false, () => setDoc(doc(as(EMILY), "pollVotes", "p-open_" + THUAN), VOTE("p-open", "thuan", 1))],
+  ["cannot vote under someone's name",       false, () => setDoc(doc(as(EMILY), "pollVotes", "p-open_" + EMILY), VOTE("p-open", "thuan", 1))],
+  ["cannot change someone else's vote",      false, () => updateDoc(doc(as(THUAN), "pollVotes", "p-open_" + EMILY), { choice: 1 })],
+  ["no voting for an option that isn't there", false, () => setDoc(doc(as(THUAN), "pollVotes", "p-open_" + THUAN), VOTE("p-open", "thuan", 3))],
+  ["no negative choices",                    false, () => setDoc(doc(as(THUAN), "pollVotes", "p-open_" + THUAN), VOTE("p-open", "thuan", -1))],
+  ["no voting once it's closed",             false, () => setDoc(doc(as(THUAN), "pollVotes", "p-shut_" + THUAN), VOTE("p-shut", "thuan", 0))],
+  ["no voting past its closing time",        false, () => setDoc(doc(as(THUAN), "pollVotes", "p-past_" + THUAN), VOTE("p-past", "thuan", 0))],
+  ["no voting in a poll that doesn't exist", false, () => setDoc(doc(as(THUAN), "pollVotes", "nope_" + THUAN), VOTE("nope", "thuan", 0))],
+  ["no extra fields on a vote",              false, () => setDoc(doc(as(THUAN), "pollVotes", "p-open_" + THUAN), VOTE("p-open", "thuan", 0, { weight: 10 }))],
+  ["stranger cannot vote",                   false, () => setDoc(doc(as(STRANGER), "pollVotes", "p-open_" + STRANGER), VOTE("p-open", "x", 0))],
+  ["member reads the votes",                 true,  () => getDocs(query(collection(as(EMILY), "pollVotes"), where("poll", "in", ["p-open", "p-shut"])))],
+  ["stranger cannot read votes",             false, () => getDocs(collection(as(STRANGER), "pollVotes"))],
+  ["member cannot delete a vote",            false, () => deleteDoc(doc(as(EMILY), "pollVotes", "p-open_" + EMILY))],
+  ["admin pings everyone about a poll",      true,  () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "poll", poll: "p-open", text: "Which day?" }))],
+  ["member cannot ping about a poll",        false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "poll", poll: "p-open" }))],
+  ["poll ping needs a real poll",            false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "poll", poll: "nope" }))],
 ];
 
 let failed = 0;
