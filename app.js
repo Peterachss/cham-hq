@@ -127,6 +127,7 @@
   let ANNOUNCES = null;
   let SALES = null, ORDERS = null, ACTS = null, SPONSORS = null, MEETINGS = null, PUSHSTATUS = null;
   let SYS = null, OB = null, OUTBOX = null, REQUESTS = null, POLLS = null, VOTES = null;
+  let SEARCH_FOCUS = null;      // the item a search result last jumped to
   const NUDGED = {};          // job id -> when you last nudged it, this visit
 
   /* Live entries sit on top of what data.json already had, rather than
@@ -668,7 +669,7 @@
       const sum = daySummary(day.items);
       const bullets = el("div", { class: "bullets" });
       items.forEach((i) => {
-        const row = el("div", { class: "bullet" + (i.key ? " key" : "") + (i.auto ? " auto" : "") }, [
+        const row = el("div", { class: "bullet" + (i.key ? " key" : "") + (i.auto ? " auto" : ""), "data-sk": feedKey(day, i) }, [
           avatar(i.who), richText(i.text)
         ]);
         /* only entries that came from the database can be removed here;
@@ -1910,7 +1911,7 @@
     if (!list.length) rail.appendChild(el("div", { class: "empty-state", text: "Nothing on this day." }));
     list.forEach((e) => {
       const d = fromIso(e.date);
-      rail.appendChild(el("div", { class: "card evrow " + e.state }, [
+      rail.appendChild(el("div", { class: "card evrow " + e.state, "data-sk": "cal:" + e.date + "|" + e.title }, [
         el("div", { class: "d" }, [ el("span", { text: MON[d.getMonth()] }), el("b", { text: String(d.getDate()) }) ]),
         el("div", { style: "min-width:0" }, [
           el("div", { class: "t", text: e.title }),
@@ -2017,7 +2018,7 @@
           ]));
         }
         if (canEdit(t)) body.appendChild(taskActions(t));
-        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status) }, [body]));
+        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status), "data-sk": "task:" + (t.id || t.title) }, [body]));
       });
       board.appendChild(list);
     });
@@ -2028,7 +2029,7 @@
       archive.sort((a, b) => String(finishedOn(b)).localeCompare(String(finishedOn(a))));
       board.appendChild(el("details", { class: "archive" }, [
         el("summary", { text: "Archive · " + archive.length + " job" + (archive.length === 1 ? "" : "s") + " finished more than a month ago" }),
-        el("ul", { class: "me-list" }, archive.map((t) => el("li", {}, [
+        el("ul", { class: "me-list" }, archive.map((t) => el("li", { "data-sk": "task:" + (t.id || t.title) }, [
           avatar(t.who), document.createTextNode(" "),
           el("b", { text: t.title }),
           document.createTextNode(" · " + (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + " · finished " + pretty(finishedOn(t)))
@@ -3461,7 +3462,7 @@
       save(patch); note.value = "";
     } });
     note.addEventListener("keydown", (e) => { if (e.key === "Enter") logIt.click(); });
-    return el("article", { class: "sp-card" + (late ? " late" : "") + (x.stage === "agreed" ? " agreed" : "") }, [
+    return el("article", { class: "sp-card" + (late ? " late" : "") + (x.stage === "agreed" ? " agreed" : ""), "data-sk": "sponsor:" + x.id }, [
       el("div", { class: "sp-top" }, [
         el("div", { class: "sp-who" }, [el("b", { text: x.name }),
           el("span", { text: [x.contact, x.ask ? "Ask: " + x.ask : ""].filter(Boolean).join(" \u00b7 ") })]),
@@ -3503,7 +3504,11 @@
     const upcoming = ms.filter((m) => m.date >= TODAY).reverse();
     const past = ms.filter((m) => m.date < TODAY);
     if (!ms.length) list.appendChild(el("p", { class: "viz-none", text: "No meetings yet. Tap + New meeting to plan the next one or write up the last." }));
-    upcoming.concat(past.slice(0, 6)).forEach((m) => list.appendChild(meetingCard(m, m.date >= TODAY)));
+    const shown = upcoming.concat(past.slice(0, 6));
+    // an older meeting someone searched for is shown too
+    const found = SEARCH_FOCUS && ms.find((m) => "meeting:" + m.id === SEARCH_FOCUS && !shown.includes(m));
+    if (found) shown.push(found);
+    shown.forEach((m) => list.appendChild(meetingCard(m, m.date >= TODAY)));
   }
 
   function meetingCard(m, soon) {
@@ -3523,7 +3528,7 @@
             } catch (err) { b.disabled = false; toast("Didn\u2019t add. " + (err.code || err.message)); }
           } }) : null)
     ]));
-    return el("article", { class: "mt-card" + (soon ? " soon" : "") }, [
+    return el("article", { class: "mt-card" + (soon ? " soon" : ""), "data-sk": "meeting:" + m.id }, [
       el("div", { class: "sp-top" }, [
         el("div", { class: "sp-who" }, [el("b", { text: m.title }),
           el("span", { text: pretty(m.date) + (soon ? " \u00b7 " + relDay(m.date) : "") + (m.people.length ? " \u00b7 " + m.people.map((k) => PEOPLE[k] ? PEOPLE[k].name : k).join(", ") : "") })]),
@@ -3826,7 +3831,7 @@
       ]));
     });
 
-    return el("section", { class: "sale-card" + (s.open ? " open" : "") }, [
+    return el("section", { class: "sale-card" + (s.open ? " open" : ""), "data-sk": "sale:" + s.id }, [
       head, tools, os.length ? makeLine : null, os.length ? nums : el("p", { class: "sl-empty", text: s.open ? "No orders yet \u2014 share the link." : "No orders." }),
       logBtn,
       os.length ? el("details", { class: "sl-det", open: os.length <= 40 }, [el("summary", { text: "All " + os.length + " orders" }), rows]) : null
@@ -3980,7 +3985,7 @@
             catch (e) { flash(acts, "Did not delete. " + (e.code || e.message)); }
           } }));
 
-        ledger.appendChild(el("div", { class: "lg-row " + (m.kind === "in" ? "in" : "out") }, [
+        ledger.appendChild(el("div", { class: "lg-row " + (m.kind === "in" ? "in" : "out"), "data-sk": "money:" + m.id }, [
           el("div", { class: "lg-date" }, d ? [
             el("b", { text: String(d.getDate()) }), el("span", { text: MON[d.getMonth()] })
           ] : [el("span", { text: "\u2014" })]),
@@ -4087,6 +4092,139 @@
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);
     window.addEventListener("pageshow", (e) => { if (e.persisted) { last = 0; check(); } });
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * Search: one box in the header, or press / from anywhere. It looks
+   * through what the page already has loaded - jobs, the feed, meetings,
+   * events, sponsors, money and pre-orders - grouped by kind. Tapping a
+   * result opens the right tab and lights the item up.
+   * ------------------------------------------------------------------ */
+  function feedKey(day, i) { return "feed:" + (i.id || (day.date || day.label) + "|" + i.text); }
+  /* "pho" finds "Phở", "cham" finds "Chạm" */
+  const fold = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\u0111/g, "d").replace(/\u0110/g, "D").toLowerCase();
+  const SEARCH_GROUPS = ["Jobs", "Updates", "Meetings", "Events", "Sponsors", "Money", "Pre-orders"];
+  const SEARCH_MAX = 5;                  // results per group; keep typing to narrow down
+
+  function searchIndex() {
+    const out = [];
+    const nm = (k) => (PEOPLE[k] ? PEOPLE[k].name : k || "");
+    const add = (group, key, title, sub, more, go) => out.push({ group, key, title: String(title || ""), sub,
+      t: fold(title), hay: fold([title, sub, more].join(" ")), go });
+    TASKS.forEach((t) => add("Jobs", "task:" + (t.id || t.title), t.title,
+      nm(t.who) + " \u00b7 " + (STATUS[t.status] ? STATUS[t.status].label : t.status) + (t.due ? " \u00b7 due " + pretty(t.due) : ""), t.note,
+      () => { S.person = "all"; S.status = t.status === "done" ? "all" : "live"; $("task-filters").replaceChildren(); $("status-filters").replaceChildren(); setView("tasks"); }));
+    DAYS.forEach((d) => d.items.forEach((i) => add("Updates", feedKey(d, i), String(i.text).replace(/\*\*/g, ""),
+      nm(i.who) + " \u00b7 " + (d.date ? pretty(d.date) : d.label || ""), d.tag,
+      () => { S.updPerson = "all"; $("upd-filters").replaceChildren(); setView("updates"); })));
+    (MEETINGS || []).forEach((m) => add("Meetings", "meeting:" + m.id, m.title, m.date ? pretty(m.date) : "",
+      [m.notes].concat(m.people.map(nm), m.decisions.map((x) => x.text)).join(" "), () => setView("calendar")));
+    EVENTS.forEach((e) => add("Events", "cal:" + e.date + "|" + e.title, e.title, pretty(e.date) + (e.state === "target" ? " \u00b7 target" : ""), e.sub,
+      () => { const d = fromIso(e.date); if (d) { S.month = new Date(d.getFullYear(), d.getMonth(), 1); S.selected = e.date; } setView("calendar"); }));
+    (EVDB || []).forEach((e) => add("Events", "countdown", e.name, (e.date ? pretty(e.date) : "") + (e.locked ? " \u00b7 locked in" : " \u00b7 target date"), e.line,
+      () => setView("updates")));
+    (SPONSORS || []).forEach((x) => add("Sponsors", "sponsor:" + x.id, x.name,
+      (STAGES_SP.find(([k]) => k === x.stage) || ["", x.stage])[1] + (x.owner ? " \u00b7 " + nm(x.owner) : ""),
+      [x.contact, x.ask].concat(x.log.map((l) => l.text)).join(" "), () => setView("sponsors")));
+    (LEDGER || []).forEach((m) => add("Money", "money:" + m.id, m.description,
+      (m.kind === "in" ? "+ " : "\u2212 ") + fmtVnd(m.amount) + (m.date ? " \u00b7 " + pretty(m.date) : "") + " \u00b7 " + whoName(m.paidBy),
+      [m.category, m.budgetLine, m.notes].join(" "),
+      () => { S.moneyKind = m.kind; S.moneyShow = "all"; $("money-filters").replaceChildren(); setView("money"); }));
+    (SALES || []).forEach((x) => add("Pre-orders", "sale:" + x.id, x.name, (x.date ? pretty(x.date) + " \u00b7 " : "") + (x.open ? "taking orders" : "closed"),
+      [x.pickup, x.note].concat(x.items.map((it) => it.name)).join(" "), () => setView("money")));
+    return out;
+  }
+
+  function runSearch(text) {
+    const words = fold(text).split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    return searchIndex().map((r, i) => ({ r, i, hit: words.every((w) => r.hay.includes(w)),
+        score: (r.t.startsWith(words[0]) ? 2 : 0) + (words.every((w) => r.t.includes(w)) ? 1 : 0) }))
+      .filter((x) => x.hit)
+      .sort((a, b) => SEARCH_GROUPS.indexOf(a.r.group) - SEARCH_GROUPS.indexOf(b.r.group) || b.score - a.score || a.i - b.i)
+      .map((x) => x.r);
+  }
+
+  /* light the item up where it lives: open anything folded around it, bring it into view */
+  function spotlight(key) {
+    const find = () => document.querySelector('[data-sk="' + CSS.escape(key) + '"]') || (key === "countdown" && !$("countdown").hidden ? $("countdown") : null);
+    let n = find();
+    if (!n) { renderNow(); n = find(); }
+    if (!n) { toast("Couldn\u2019t find that on the page \u2014 it may have just changed"); return; }
+    for (let d = n.closest("details"); d; d = d.parentElement ? d.parentElement.closest("details") : null) d.open = true;
+    const still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    n.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+    document.querySelectorAll(".sk-hit").forEach((x) => x.classList.remove("sk-hit"));   // only one lit at a time
+    void n.offsetWidth;                  // restart the glow if it was already on
+    n.classList.add("sk-hit");
+    clearTimeout(spotlight.t);
+    spotlight.t = setTimeout(() => n.classList.remove("sk-hit"), 2600);
+  }
+
+  (function search() {
+    const q = $("q"), box = $("q-results");
+    if (!q || !box) return;
+    let results = [], active = -1;
+    const shut = () => { box.hidden = true; q.setAttribute("aria-expanded", "false"); q.removeAttribute("aria-activedescendant"); active = -1; };
+    const pick = (i) => {
+      const opts = [...box.querySelectorAll(".q-item")];
+      if (!opts.length) return;
+      active = (i + opts.length) % opts.length;
+      opts.forEach((o, j) => o.classList.toggle("active", j === active));
+      q.setAttribute("aria-activedescendant", opts[active].id);
+      opts[active].scrollIntoView({ block: "nearest" });
+    };
+    const go = (r) => {
+      shut(); q.blur();
+      SEARCH_FOCUS = r.key;
+      r.go();
+      spotlight(r.key);
+    };
+    function draw() {
+      const text = q.value.trim();
+      if (!SESSION || !text) { box.replaceChildren(); shut(); return; }
+      results = runSearch(text);
+      active = -1;
+      const kids = [];
+      let n = 0;
+      SEARCH_GROUPS.forEach((g) => {
+        const rows = results.filter((r) => r.group === g);
+        if (!rows.length) return;
+        kids.push(el("div", { class: "q-group", role: "group", "aria-label": g }, [
+          el("div", { class: "q-gh", text: g + " \u00b7 " + rows.length }),
+          ...rows.slice(0, SEARCH_MAX).map((r) => el("button", { class: "q-item", type: "button", role: "option", id: "q-opt-" + (n++),
+            onclick: () => go(r) }, [el("span", { class: "q-t", text: r.title }), el("span", { class: "q-s", text: r.sub })])),
+          rows.length > SEARCH_MAX ? el("div", { class: "q-more", text: "+ " + (rows.length - SEARCH_MAX) + " more \u2014 add a word to narrow it down" }) : null
+        ]));
+      });
+      box.replaceChildren(...(kids.length ? kids : [el("div", { class: "q-none", text: "Nothing matches \u201c" + text + "\u201d." })]));
+      box.setAttribute("role", "listbox");
+      box.hidden = false;
+      q.setAttribute("aria-expanded", "true");
+    }
+    q.addEventListener("input", draw);
+    q.addEventListener("focus", () => { if (q.value.trim()) draw(); });
+    q.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); if (box.hidden) draw(); pick(active + 1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); pick(active - 1); }
+      else if (e.key === "Enter") {
+        const opts = [...box.querySelectorAll(".q-item")];
+        const o = opts[active >= 0 ? active : 0];
+        if (o) { e.preventDefault(); o.click(); }
+      } else if (e.key === "Escape") { e.preventDefault(); if (!box.hidden) shut(); else { q.value = ""; q.blur(); } }
+    });
+    // taps inside the results must not count as leaving the box
+    box.addEventListener("mousedown", (e) => e.preventDefault());
+    document.addEventListener("click", (e) => { if (!$("search").contains(e.target)) shut(); });
+    // "/" from anywhere jumps to the search box - unless you're typing somewhere
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const a = document.activeElement;
+      if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+      if (!SESSION || document.body.classList.contains("locked") || ($("money-sheet") && $("money-sheet").open)) return;
+      e.preventDefault();
+      q.focus(); q.select();
+    });
   })();
 
   const fromLink = location.hash.slice(1);

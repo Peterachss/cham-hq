@@ -1202,7 +1202,7 @@
    * this card - nothing else is even drawn
    * ------------------------------------------------------------------ */
   body.locked .wrap, body.locked .tabs, body.locked .stamp, body.locked #log-fab,
-  body.locked .install, body.locked .sheet, body.locked .hclock { display: none !important; }
+  body.locked .install, body.locked .sheet, body.locked .hclock, body.locked .search { display: none !important; }
   body:not(.locked) #gate { display: none; }
   .gate { max-width: 1060px; margin: 0 auto; padding: 40px 18px; }
   .gate-card { max-width: 440px; margin: 0 auto; text-align: center; padding: 28px 22px; border-radius: 18px;
@@ -1426,3 +1426,28 @@
   .poll-new-opts { display: flex; flex-direction: column; gap: 7px; margin: 8px 0; }
   .poll-new-opts .ad-in.wide { flex: 1 1 auto; }
   @media (prefers-reduced-motion: reduce) { .poll-bar { transition: none; } }
+
+  /* search: one box in the header; results grouped by kind, under it */
+  .search { position: relative; }
+  .q-in { width: 100%; box-sizing: border-box; height: 38px; padding: 0 36px 0 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); font: inherit; font-size: 15px; }
+  .q-in::placeholder { color: var(--muted); }
+  .q-in:focus-visible { outline: 2px solid var(--jade); outline-offset: 1px; }
+  .q-key { position: absolute; right: 10px; top: 9px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; line-height: 18px; pointer-events: none; }
+  .q-in:focus + .q-key, .q-in:not(:placeholder-shown) + .q-key { display: none; }
+  @media (hover: none) { .q-key { display: none; } }
+  .q-results { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40; max-height: min(65vh, 520px); overflow-y: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; }
+  .q-group + .q-group { border-top: 1px solid var(--line-soft); margin-top: 4px; padding-top: 4px; }
+  .q-gh { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 4px; }
+  .q-item { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: none;
+    color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+  .q-item:hover, .q-item.active { background: var(--jade-soft); }
+  .q-item:focus-visible { outline: 2px solid var(--jade); outline-offset: -2px; }
+  .q-t { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-s { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-more, .q-none { font-size: 12.5px; color: var(--muted); padding: 6px 8px; }
+  /* the item a search result jumped to glows for a moment */
+  .sk-hit { outline: 3px solid var(--marigold); outline-offset: 3px; border-radius: 10px; animation: sk-glow 2.4s ease-out; }
+  @keyframes sk-glow { 0%, 40% { box-shadow: 0 0 0 8px var(--marigold-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
