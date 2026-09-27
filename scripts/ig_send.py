@@ -3,8 +3,9 @@
 Chạm HQ - send one message to the Chạm Instagram group chat as the
 cham_summarizer bot (the same signed-in profile the nightly wrap uses).
 
-    python scripts/ig_send.py            send MESSAGE below, once
-    python scripts/ig_send.py --check    only look: signed in? already sent?
+    python scripts/ig_send.py                    send MESSAGE below, once
+    python scripts/ig_send.py --file msg.txt     send the text in that file, once
+    python scripts/ig_send.py --check            only look: signed in? already sent?
 
 Sends at most once: if the message's first line is already in the recent
 part of the conversation, it does nothing. If the bot is signed out or the
@@ -36,7 +37,12 @@ CONVO = """() => {
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--file", help="send the text in this file instead of MESSAGE")
     args = ap.parse_args()
+    global MESSAGE
+    if args.file:
+        with open(args.file, encoding="utf-8") as f:
+            MESSAGE = f.read().strip()
     cfg = w.load_config()
     mark = MESSAGE.splitlines()[0].strip()
     from playwright.sync_api import sync_playwright

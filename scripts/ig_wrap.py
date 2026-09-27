@@ -88,6 +88,105 @@ def browser(p, headless):
         return p.chromium.launch_persistent_context(PROFILE, channel="msedge", **opts)
 
 
+CONVO_JS = r"""() => {
+  const nav = document.querySelector('[aria-label="Thread list"]');
+  const main = document.querySelector('div[role="main"]') || document.body;
+  // the conversation list: the box whose children are the message rows (never the chat list)
+  let best = null, bestN = 0;
+  main.querySelectorAll('div').forEach((d) => {
+    if ((nav && nav.contains(d)) || d.children.length < 3) return;
+    let n = 0;
+    for (const c of d.children) if (c.querySelector('[dir="auto"]')) n++;
+    if (n > bestN || (n === bestN && best && best.contains(d))) { best = d; bestN = n; }
+  });
+  if (!best) return [];
+  const mid = best.getBoundingClientRect().left + best.getBoundingClientRect().width / 2;
+  return [...best.children].map((row) => {
+    // outermost text pieces only (a div[dir=auto] can wrap a span[dir=auto])
+    const bits = [...row.querySelectorAll('[dir="auto"]')]
+      .filter((e) => !e.parentElement.closest('[dir="auto"]') || !row.contains(e.parentElement.closest('[dir="auto"]')))
+      .map((e) => (e.innerText || '').trim()).filter(Boolean);
+    const btn = row.querySelector('[aria-label^="Reply to message from "]');
+    const bubble = row.querySelector('[dir="auto"]');
+    const r = bubble ? bubble.getBoundingClientRect() : null;
+    return { bits, user: btn ? btn.getAttribute('aria-label').replace('Reply to message from ', '').trim() : null,
+             mine: Boolean(r && r.left > mid) };      // our own messages sit on the right
+  }).filter((x) => x.bits.length);
+}"""
+
+TIME_ROW = re.compile(r"^((today|yesterday|mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s*)?"
+                      r"([a-z]{3,9}\.? \d{1,2},?( \d{4})?,?\s*)?(\d{1,2}:\d{2}\s*(am|pm)?)?$", re.I)
+TIME_ONLY = re.compile(r"^(today\s*)?\d{1,2}:\d{2}\s*(am|pm)?$", re.I)     # a time with no day = today
+
+
+def is_older_marker(b):
+    """A time marker from before today: "Sat 10:25 PM", "Yesterday 9:40 PM",
+    "Sep 25, 2026, 3:15 PM". A bare "7:33 AM" is today."""
+    return bool(TIME_ROW.match(b) and re.search(r"\d", b) and not TIME_ONLY.match(b))
+
+
+def rows_for_today(items):
+    """Turn the conversation rows into "Name: message" lines, keeping only
+    what came after the last marker from an earlier day, and never our own
+    messages. A row is: [time marker] [sender name / "X replied to Y"]
+    [quoted message] message."""
+    start = 0
+    for i, it in enumerate(items):
+        if any(is_older_marker(b) for b in it["bits"]):
+            start = i + 1                              # that row and everything above it is an earlier day
+    out, who = [], None
+    for it in items[start:]:
+        bits = [b for b in it["bits"] if not TIME_ROW.match(b) and b not in ("Edited", "New messages") and not IG_UI.match(b)]
+        if not it["user"] and not who:
+            continue                                   # nobody sent it: Instagram's own menus, not a message
+        if it["user"]:
+            who = None                                 # the row says exactly who sent it
+        kept = []
+        for b in bits:
+            m = re.match(r"^(.+?) replied to (.+)$", b)
+            if m:
+                who = who or m.group(1)
+                continue
+            kept.append(b)
+        # a short first bit on a multi-part row is the sender's display name
+        if len(kept) > 1 and len(kept[0]) <= 24 and len(kept[0].split()) <= 3:
+            who = who or kept[0]
+            kept = kept[1:]
+        bits = kept
+        if not bits:
+            continue
+        if it["mine"] or (it["user"] or "").startswith("cham_summarizer"):
+            continue                                   # the bot's own posts
+        raw = it["user"] or who or ""
+        names = PEOPLE_NAMES_CACHE()
+        key = None
+        if raw:
+            key = (ALIASES().get(raw.lower()) or who_is_this(raw, names)
+                   or who_is_this(re.sub(r"[\d_.]+", " ", raw).strip(), names))
+        sender = names.get(key, raw) if key else (raw or "team")
+        for b in bits:
+            if b in (raw, sender):
+                continue
+            out.append(f"{sender}: {b}")
+    return out
+
+
+def ALIASES():
+    """Instagram usernames that don't look like the person's name - kept in
+    ~/.cham-hq/config.json ("aliases"), not in this public repo."""
+    try:
+        return {k.lower(): v for k, v in (load_config().get("aliases") or {}).items()}
+    except Exception:
+        return {}
+
+
+_PN = {}
+def PEOPLE_NAMES_CACHE():
+    if not _PN:
+        _PN.update(people_names({}))
+    return _PN
+
+
 def do_login(cfg):
     """Opens a window and waits. You sign the throwaway account in by hand -
     the script never sees the password."""
@@ -147,34 +246,25 @@ def scrape(cfg, headless):
             ctx.close()
             sys.exit("Instagram signed the bot out. Run with --login again.")
 
-        # scroll the thread up a few times so a full day is loaded
-        for _ in range(int(cfg.get("scroll_passes", 8))):
-            page.mouse.wheel(0, -2200)
+        # scroll the conversation (not the chat list) up so the whole day is loaded
+        vw = page.viewport_size or {"width": 1280, "height": 900}
+        page.mouse.move(int(vw["width"] * 0.68), int(vw["height"] * 0.5))
+        # Instagram only keeps what's on screen: scrolling up drops the newest
+        # rows. So start at the bottom and collect while scrolling up a little
+        # at a time, until a time marker from an earlier day shows up.
+        key = lambda it: (it["user"], tuple(it["bits"]))
+        items = page.evaluate(CONVO_JS)
+        for _ in range(int(cfg.get("scroll_passes", 14))):
+            if any(is_older_marker(b) for it in items for b in it["bits"]):
+                break
+            page.mouse.wheel(0, -900)
             page.wait_for_timeout(900)
-
-        rows = page.evaluate(
-            """() => {
-              const out = [];
-              const seen = new Set();
-              // only the open conversation - not Instagram's menu or the chat list down the side
-              const root = document.querySelector('[aria-label^="Messages in conversation"], [aria-label^="Conversation with"]')
-                        || document.querySelector('div[role="main"]') || document;
-              root.querySelectorAll('div[role="row"], div[role="listitem"]').forEach((r) => {
-                const t = (r.innerText || '').trim();
-                if (!t || t.length < 2 || seen.has(t)) return;
-                seen.add(t);
-                out.push(t);
-              });
-              if (out.length) return out;
-              // fallback: any span that carries a decent run of text
-              root.querySelectorAll('span[dir="auto"]').forEach((s) => {
-                const t = (s.innerText || '').trim();
-                if (t.length > 1 && !seen.has(t)) { seen.add(t); out.push(t); }
-              });
-              return out;
-            }"""
-        )
+            more = page.evaluate(CONVO_JS)
+            ks = [key(x) for x in more]
+            first = key(items[0]) if items else None
+            items = (more[:ks.index(first)] if first in ks else more) + items
         ctx.close()
+        rows = rows_for_today(items)
 
     log(f"scrape: {len(rows)} raw blocks")
     os.makedirs(LOGS, exist_ok=True)
