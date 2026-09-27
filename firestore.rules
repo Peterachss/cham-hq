@@ -24,6 +24,8 @@ service cloud.firestore {
     function isAdmin()   { return isMember() && me().get('admin', false) == true; }
     // Thuan, or whoever holds the money. Set finance: true on their member doc.
     function isFinance() { return isMember() && me().get('finance', false) == true; }
+    // Whoever runs the background jobs (Peter). Set sysadmin: true on their member doc.
+    function isSysadmin() { return isMember() && me().get('sysadmin', false) == true; }
 
     match /members/{memberEmail} {
       allow read:  if isMember();
@@ -193,7 +195,7 @@ service cloud.firestore {
     // Who has notifications on, and on what kind of device - worked out by
     // the sender from the subscriptions nobody else may read. Admins only.
     match /meta/{docId} {
-      allow read:  if docId in ['pushStatus', 'status'] && isAdmin();
+      allow read:  if (docId == 'pushStatus' && isAdmin()) || (docId == 'status' && isSysadmin());
       allow write: if false;
     }
 

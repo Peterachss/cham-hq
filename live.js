@@ -251,7 +251,8 @@ if (!CONFIGURED) {
       finance: member.finance === true,
       name: member.name || (window.ChamHQ.personName(member.personKey) || user.email),
       role: window.ChamHQ.personRole(member.personKey),
-      nudged: member.notifyNudge || null          // an admin asked this person to turn notifications on
+      nudged: member.notifyNudge || null,         // an admin asked this person to turn notifications on
+      sysadmin: member.sysadmin === true          // runs the background jobs: sees their status
     };
     window.ChamHQ.setSession(session);
     showSignedIn(session);
@@ -424,8 +425,8 @@ if (!CONFIGURED) {
       (s) => window.ChamHQ.setOnboarding(s.exists() ? s.data() : {}),
       () => window.ChamHQ.setOnboarding({}));
 
-    // admins: every background job's last check-in
-    if (session.admin) {
+    // whoever runs the background jobs: every job's last check-in
+    if (session.sysadmin) {
       unsubSys = onSnapshot(doc(db, "meta", "status"),
         (s) => window.ChamHQ.setSysStatus(s.exists() ? s.data() : { jobs: {} }),
         () => window.ChamHQ.setSysStatus(null));

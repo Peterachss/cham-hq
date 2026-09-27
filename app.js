@@ -1068,7 +1068,7 @@
   function renderSystem() {
     const box = $("system");
     if (!box) return;
-    const on = Boolean(SESSION && SESSION.admin && SYS);
+    const on = Boolean(SESSION && SESSION.sysadmin && SYS);   // only whoever runs the jobs
     box.hidden = !on;
     if (!on) { box.replaceChildren(); return; }
     const J = SYS.jobs || {};

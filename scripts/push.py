@@ -154,7 +154,8 @@ def load(db):
         key = (m.get("personKey") or "").strip()
         if key:
             members[d.id] = {"email": d.id, "key": key, "name": m.get("name") or key.title(),
-                             "admin": m.get("admin") is True, "finance": m.get("finance") is True}
+                             "admin": m.get("admin") is True, "finance": m.get("finance") is True,
+                             "sysadmin": m.get("sysadmin") is True}
     by_key = {m["key"]: m for m in members.values()}
 
     subs = {}
@@ -348,7 +349,8 @@ def health(db, P, by_key, subs):
     st = ref.get().to_dict() or {}
     jobs, alerts = st.get("jobs", {}), dict(st.get("alerts", {}))
     now = dt.datetime.now(VN)
-    admins = [m for m in by_key.values() if m["admin"]]
+    # only whoever runs the jobs (sysadmin on their member doc); admins if nobody is set
+    admins = [m for m in by_key.values() if m.get("sysadmin")] or [m for m in by_key.values() if m["admin"]]
     changed = False
     for key, (hours, ping, label) in HEALTH.items():
         j = jobs.get("push" if key == "github" else key, {})

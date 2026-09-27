@@ -22,7 +22,7 @@ async function seed() {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    await setDoc(doc(db, "members", PETER), { personKey: "peter", admin: true });
+    await setDoc(doc(db, "members", PETER), { personKey: "peter", admin: true, sysadmin: true });
     await setDoc(doc(db, "members", THUAN), { personKey: "thuan", finance: true });
     await setDoc(doc(db, "members", EMILY), { personKey: "emily" });
     await setDoc(doc(db, "members", BACH), { personKey: "bach", admin: true });
@@ -209,7 +209,8 @@ const cases = [
   ["admin sees who has notifications on",    true,  () => getDoc(doc(as(BACH), "meta/pushStatus"))],
   ["member cannot see notification status",  false, () => getDoc(doc(as(EMILY), "meta/pushStatus"))],
   ["admin cannot read the sender's state",   false, () => getDoc(doc(as(BACH), "meta/push"))],
-  ["admin reads the system status",          true,  () => getDoc(doc(as(BACH), "meta/status"))],
+  ["Peter reads the system status",          true,  () => getDoc(doc(as(PETER), "meta/status"))],
+  ["another admin cannot read it",           false, () => getDoc(doc(as(BACH), "meta/status"))],
   ["member cannot read the system status",   false, () => getDoc(doc(as(EMILY), "meta/status"))],
   ["member saves own checklist",             true,  () => setDoc(doc(as(EMILY), "onboarding", EMILY), { notify: true })],
   ["member cannot read someone's checklist", false, () => getDoc(doc(as(EMILY), "onboarding", THUAN))],
