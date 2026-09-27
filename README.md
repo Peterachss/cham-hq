@@ -42,7 +42,8 @@ their email, lowercase):
 | --- | --- | --- | --- |
 | **Push notifications** - new job, somebody stuck, money waiting for the sheet, 7am due list, 9pm round-up | Every 15 min | Scheduled task *Cham HQ notifications* on Peter's PC; GitHub Actions as backup | Nothing more on the PC. For the backup: two GitHub secrets (below) |
 | **Finance sheet sync** - new money lines appended to the sheet's Expenses / Income tabs | Hourly | Scheduled task *Cham HQ finance sync*; GitHub as backup | Sheets API switched on, and the sheet shared with the service account |
-| **Chat wrap** - reads the day's group chat, sorts it, queues it for review | 9pm | Scheduled task *Cham HQ nightly wrap* | The bot account signed in once (`ig_wrap.py --login`) |
+| **Chat wrap** - reads the day's group chat, sorts it, queues it for review, and files simple asks ("move the sale to the 7th") as requests for an admin to apply | 9pm | Scheduled task *Cham HQ nightly wrap* | The bot account signed in once (`ig_wrap.py --login`) |
+| **Group chat post** - the short version of an approved wrap, sent to the Instagram group chat | Within seconds of an admin tapping Post | The announcements watcher (`announce.py --watch`), only on the computer where the bot is signed in; `push.py` as backup | Same as the chat wrap |
 | **Email** - new jobs and a 7am digest | Every 15 min | GitHub Actions | Three GitHub secrets |
 
 Everything above checks its own setup and, if something is missing, says exactly what
