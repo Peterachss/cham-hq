@@ -1464,3 +1464,55 @@
 .cal-form .an-text, .task .tedit .an-text { width: 100%; }
 .cal-new { padding: 12px 14px; }
 .cal-new .filters { margin: 0; }
+.evrow .cal-rm { padding: 3px 10px; font-size: 12px; }
+
+/* ---- merch ---- */
+.merch-about { color: var(--muted); font-size: 13px; margin: -4px 0 12px; max-width: 70ch; }
+.mgrid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-bottom: 22px; }
+.mgrid.wide { grid-template-columns: 1fr; }
+.mgrid.ideas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.mcard { display: flex; flex-direction: column; }
+.mtile {
+  appearance: none; border: 0; padding: 0; cursor: zoom-in; display: block; width: 100%;
+  background: #f4f1e6; line-height: 0;
+}
+.mtile img { width: 100%; height: 280px; object-fit: contain; display: block; }
+.mgrid.wide .mtile img { height: auto; max-height: 760px; }
+.mtile svg { display: block; width: 100%; height: auto; }
+.mtile:focus-visible { outline: 2px solid var(--jade); outline-offset: -2px; }
+.mfoot { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.mhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mhead b { font-size: 14px; }
+.mhead .act { margin-left: auto; padding: 3px 10px; font-size: 12px; }
+.mkind { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.mcap { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.swatches { display: flex; gap: 8px; margin-top: 4px; }
+.sw {
+  width: 24px; height: 24px; border-radius: 50%; cursor: pointer; padding: 0;
+  border: 2px solid var(--line); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+}
+.sw[aria-pressed="true"] { outline: 2px solid var(--jade); outline-offset: 2px; }
+.merch-add summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.merch-add[open] summary { margin-bottom: 10px; }
+.merch-add .adrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.merch-add .ad-in.wide { flex: 1 1 240px; min-width: 0; }
+
+/* the concept drawings: fixed garment colours and fonts, whatever the theme */
+svg.mock .shirt { fill: var(--shirt); }
+svg.mock .ink { fill: var(--dink); }
+svg.mock .inks { stroke: var(--dink); }
+svg.mock .an { font-family: "Archivo Narrow", sans-serif; }
+svg.mock .mono { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+svg.mock .anton { font-family: "Anton", sans-serif; }
+svg.mock .barlow { font-family: "Barlow Condensed", sans-serif; }
+svg.mock .bvp { font-family: "Be Vietnam Pro", sans-serif; }
+svg.mock .slab { font-family: "Alfa Slab One", serif; }
+svg.mock .lbl { fill: #7a7a72; font: 700 11px var(--sans, sans-serif); letter-spacing: 2px; }
+
+.merch-lb .mlb-stage { max-width: 100%; display: flex; justify-content: center; }
+.merch-lb .mlb-stage img { max-width: 100%; max-height: 80vh; border-radius: 8px; }
+.merch-lb .mlb-stage svg { width: min(94vw, 1200px, 150vh); height: auto; background: #f4f1e6; border-radius: 8px; }
+.mlb-nav {
+  appearance: none; border: 0; cursor: pointer; background: rgba(255,255,255,.14); color: #fff;
+  width: 40px; height: 40px; border-radius: 50%; font-size: 22px; line-height: 1;
+}

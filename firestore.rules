@@ -45,6 +45,27 @@ service cloud.firestore {
 
     // Photos for CAS evidence. Stored small and inline, readable only by
     // members - these are pictures of students and must not be public.
+    // Merch designs: pictures of the drafts (kept here, not in the public
+    // code, because some are phone photos of a screen) and the drawn
+    // concept ideas. Any member adds one under their own name; an admin,
+    // or whoever added it, removes it. Nobody edits one in place.
+    match /merch/{itemId} {
+      function mi() { return request.resource.data; }
+      allow read:   if isMember();
+      allow create: if isMember()
+                    && mi().keys().hasOnly(['kind', 'group', 'title', 'caption', 'data', 'w', 'h', 'idea', 'order', 'who', 'createdBy', 'createdAt'])
+                    && mi().kind in ['photo', 'idea']
+                    && mi().group in ['final', 'canva', 'sketch', 'idea']
+                    && mi().title is string && mi().title.size() > 0 && mi().title.size() <= 120
+                    && mi().get('caption', '') is string && mi().get('caption', '').size() <= 300
+                    && (mi().kind == 'idea' || (mi().data is string && mi().data.size() < 1000000))
+                    && mi().who == me().personKey
+                    && mi().createdBy == email()
+                    && mi().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() || (isMember() && resource.data.createdBy == email());
+    }
+
     match /photos/{photoId} {
       allow read:   if isMember();
       allow create: if isMember()

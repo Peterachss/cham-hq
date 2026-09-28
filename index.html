@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=66" />
+<link rel="stylesheet" href="styles.css?v=67" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -46,6 +46,7 @@
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
       <button class="tab" role="tab" id="tab-money" aria-controls="view-money" aria-selected="false" data-view="money">Money <span class="n" id="n-money"></span></button>
       <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
+      <button class="tab" role="tab" id="tab-merch" aria-controls="view-merch" aria-selected="false" data-view="merch">Merch <span class="n" id="n-merch"></span></button>
       <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
       <button class="tab" role="tab" id="tab-sponsors" aria-controls="view-sponsors" aria-selected="false" data-view="sponsors">Sponsors <span class="n" id="n-sponsors"></span></button>
     </nav>
@@ -165,6 +166,14 @@
     <div id="photo-grid"></div>
   </section>
 
+  <section id="view-merch" role="tabpanel" aria-labelledby="tab-merch" tabindex="0" hidden>
+    <h2 class="sec">Merch</h2>
+    <p class="hint">Hoodie and T-shirt designs for Chạm — Changing Lives Through Compassion. Tap one to see it bigger. Members only: these aren’t on any public page.</p>
+    <div id="merch-add" class="admin" hidden></div>
+    <div class="filters" id="merch-filters"></div>
+    <div id="merch-grid"></div>
+  </section>
+
   <section id="view-tracker" role="tabpanel" aria-labelledby="tab-tracker" tabindex="0" hidden>
     <h2 class="sec">How everyone is doing</h2>
     <p class="hint">Everything finished, everything still open, and how far past its date. Everyone signed in sees the same numbers. Jobs with no due date can never be late, so they only count towards the open total.</p>
@@ -197,13 +206,23 @@
   <div class="lb-bar"><span id="lb-cap"></span><a id="lb-dl" download="cham-photo.jpg">Save it</a></div>
 </div>
 
+<div class="lightbox merch-lb" id="merch-lb" hidden role="dialog" aria-modal="true" aria-label="Design">
+  <button class="lb-x" id="mlb-close" aria-label="Close">&times;</button>
+  <div class="mlb-stage" id="mlb-stage"></div>
+  <div class="lb-bar">
+    <button class="mlb-nav" id="mlb-prev" type="button" aria-label="Previous design">&lsaquo;</button>
+    <span id="mlb-cap"></span>
+    <button class="mlb-nav" id="mlb-next" type="button" aria-label="Next design">&rsaquo;</button>
+  </div>
+</div>
+
 <!-- logging money is one tap from anywhere: this sheet opens over whatever tab you are on -->
 <dialog id="money-sheet" class="sheet" aria-label="Log money">
   <button class="sheet-x" id="money-sheet-x" type="button" aria-label="Close">&times;</button>
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=66" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=67" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -224,8 +243,9 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=66"></script>
-<script src="app.js?v=66"></script>
-<script type="module" src="live.js?v=66"></script>
+<script src="firebase-config.js?v=67"></script>
+<script src="merch.js?v=67"></script>
+<script src="app.js?v=67"></script>
+<script type="module" src="live.js?v=67"></script>
 </body>
 </html>

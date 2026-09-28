@@ -33,6 +33,8 @@ async function seed() {
     await setDoc(doc(db, "expenses", "e-logged"), { kind: "out", amount: 90000, description: "Tape",
       status: "logged", createdBy: EMILY, receipt: "" });
     await setDoc(doc(db, "photos", "p-emily"), { who: "emily", data: "x", date: "2026-09-26" });
+    await setDoc(doc(db, "merch", "m-seed"), { kind: "photo", group: "final", title: "Six colourways", data: "x", who: "peter", createdBy: "" });
+    await setDoc(doc(db, "merch", "m-emily"), { kind: "photo", group: "sketch", title: "Stars", data: "x", who: "emily", createdBy: EMILY });
     await setDoc(doc(db, "updates", "u-emily"), { who: "emily", text: "hi", date: "2026-09-26" });
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
     await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
@@ -73,6 +75,11 @@ const ORD = (extra = {}) => ({ sale: "s-open", name: "Minh", cls: "10A", contact
 
 const OUT = (by, key, extra = {}) => ({ kind: "nightly", date: "2026-09-27", text: "🧾 Chạm on Sun 27 Sep\n• Sale moved\nUpdates tab: peterachss.github.io/cham-hq",
   by: key, byName: "x", createdBy: by, status: "pending", createdAt: serverTimestamp(), ...extra });
+
+// a design; pass { field: undefined } to leave a field out
+const MER = (by, key, extra = {}) => Object.fromEntries(Object.entries({ kind: "photo", group: "canva", title: "Hoodie draft", caption: "",
+  data: "data:image/jpeg;base64,xyz", w: 900, h: 1600, who: key, createdBy: by, createdAt: serverTimestamp(), ...extra })
+  .filter(([, v]) => v !== undefined));
 
 const POLL = (by, key, extra = {}) => ({ question: "Sale on Friday or Saturday?", options: ["Friday", "Saturday"], closesAt: null,
   status: "open", by: key, byName: "x", createdBy: by, createdAt: serverTimestamp(), ...extra });
@@ -310,6 +317,24 @@ const cases = [
   ["admin pings everyone about a poll",      true,  () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "poll", poll: "p-open", text: "Which day?" }))],
   ["member cannot ping about a poll",        false, () => addDoc(collection(as(EMILY), "announcements"), ANN(EMILY, "emily", { kind: "poll", poll: "p-open" }))],
   ["poll ping needs a real poll",            false, () => addDoc(collection(as(BACH), "announcements"), ANN(BACH, "bach", { kind: "poll", poll: "nope" }))],
+  // ---------------------------------------------------------------- merch
+  ["member reads the merch designs",         true,  () => getDocs(collection(as(EMILY), "merch"))],
+  ["stranger cannot read merch",             false, () => getDocs(collection(as(STRANGER), "merch"))],
+  ["signed out cannot read merch",           false, () => getDoc(doc(anon(), "merch/m-seed"))],
+  ["member adds a design",                   true,  () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily"))],
+  ["admin adds a concept idea",              true,  () => addDoc(collection(as(PETER), "merch"), MER(PETER, "peter", { kind: "idea", group: "idea", idea: "varsity", data: undefined }))],
+  ["cannot add a design as someone else",    false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "bach"))],
+  ["cannot add under another email",         false, () => addDoc(collection(as(EMILY), "merch"), MER(BACH, "emily"))],
+  ["a picture needs its image",              false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { data: undefined }))],
+  ["oversized design is refused",            false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { data: "x".repeat(1_000_001) }))],
+  ["design needs a title",                   false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { title: "" }))],
+  ["only the known groups",                  false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { group: "secret" }))],
+  ["no extra fields on a design",            false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { public: true }))],
+  ["stranger cannot add a design",           false, () => addDoc(collection(as(STRANGER), "merch"), MER(STRANGER, "x"))],
+  ["designs cannot be edited",               false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { title: "y" })],
+  ["member removes their own design",        true,  () => deleteDoc(doc(as(EMILY), "merch/m-emily"))],
+  ["member cannot remove someone else's",    false, () => deleteDoc(doc(as(EMILY), "merch/m-seed"))],
+  ["admin removes any design",               true,  () => deleteDoc(doc(as(BACH), "merch/m-seed"))],
 ];
 
 let failed = 0;

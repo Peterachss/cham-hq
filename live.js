@@ -69,6 +69,7 @@ if (!CONFIGURED) {
     return n;
   };
 
+  let unsubMerch = null;
   let unsubTasks = null, unsubUpdates = null, unsubPhotos = null, unsubMoney = null, unsubDrafts = null;
   let unsubAnn = null, unsubSales = null, unsubOrders = null, unsubActs = null, unsubSponsors = null, unsubMeetings = null;
   let unsubPushStatus = null, unsubSys = null, unsubOnboard = null, unsubEvents = null, unsubOutbox = null, unsubRequests = null;
@@ -210,6 +211,7 @@ if (!CONFIGURED) {
     if (unsubTasks) { unsubTasks(); unsubTasks = null; }
     if (unsubUpdates) { unsubUpdates(); unsubUpdates = null; }
     if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
+    if (unsubMerch) { unsubMerch(); unsubMerch = null; }
     if (unsubMoney) { unsubMoney(); unsubMoney = null; }
     if (unsubDrafts) { unsubDrafts(); unsubDrafts = null; }
     if (unsubAnn) { unsubAnn(); unsubAnn = null; }
@@ -363,6 +365,26 @@ if (!CONFIGURED) {
       (err) => {
         console.error("Chạm HQ: lost the photos", err);
         window.ChamHQ.setPhotos(null);
+      });
+
+    // Merch designs: the drafts' pictures (inline, like photos) and the drawn
+    // concept ideas, which are just a name here - the drawing is in merch.js.
+    unsubMerch = onSnapshot(collection(db, "merch"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({
+            id: d.id, kind: v.kind || "photo", group: v.group || "canva", title: v.title || "", caption: v.caption || "",
+            data: v.data || "", w: v.w || 0, h: v.h || 0, idea: v.idea || "", order: v.order || 0,
+            who: v.who || "team", createdBy: v.createdBy || ""
+          });
+        });
+        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the merch designs", err);
+        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(null);
       });
 
     // Money in and out. Everyone can log; Thuan and the admins keep it tidy.
@@ -641,6 +663,15 @@ if (!CONFIGURED) {
       });
     },
     async deletePhoto(id) { await deleteDoc(doc(db, "photos", id)); },
+    async addMerch(m) {
+      const me = auth.currentUser.email.toLowerCase();
+      await addDoc(collection(db, "merch"), {
+        kind: "photo", group: m.group, title: m.title, caption: m.caption || "",
+        data: m.data, w: m.w, h: m.h, order: Date.now(), who: m.who,
+        createdBy: me, createdAt: serverTimestamp()
+      });
+    },
+    async deleteMerch(id) { await deleteDoc(doc(db, "merch", id)); },
 
     async addMoney(e) {
       await addDoc(collection(db, "expenses"), {

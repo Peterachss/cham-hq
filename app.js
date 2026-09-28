@@ -122,6 +122,7 @@
   let SESSION = null;
   let LIVE_UPDATES = null;
   let PHOTOS = null;
+  let MERCH = null;
   let LEDGER = null;
   let DRAFTS = null;
   let ANNOUNCES = null;
@@ -184,6 +185,7 @@
     setActivities(rows) { ACTS = Array.isArray(rows) ? rows : null; if (S.view === "tracker") renderImpact(); },
     setSales(rows) { SALES = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
     setOrders(rows) { ORDERS = Array.isArray(rows) ? rows : null; if (S.view === "money") renderSales(); },
+    setMerch(rows) { MERCH = Array.isArray(rows) ? rows : null; render(); },
     setPhotos(rows) {
       PHOTOS = Array.isArray(rows) ? rows : null;
       $("photo-filters").replaceChildren();
@@ -484,13 +486,14 @@
     updPerson: "all",
     trackSort: "behind",
     photoPerson: "all",
+    merchGroup: "all",
     moneyKind: "out",
     moneyShow: "all",
     month: (() => { const d = fromIso(TODAY); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
     selected: TODAY
   };
 
-  const VIEWS = ["me","updates","calendar","tasks","money","photos","tracker","sponsors"];
+  const VIEWS = ["me","updates","calendar","tasks","money","photos","merch","tracker","sponsors"];
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -541,6 +544,7 @@
     if (S.view === "tasks") renderTasks();
     if (S.view === "money") { renderSales(); renderMoney(); }
     if (S.view === "photos") renderPhotos();
+    if (S.view === "merch") renderMerch();
     if (S.view === "tracker") { renderImpact(); renderTracker(); }
     renderAdmin();
   }
@@ -624,6 +628,7 @@
     $("n-tasks").textContent = liveTasks().length;
     $("n-tracker").textContent = TASKS.filter((t) => t.status === "done").length;
     $("n-photos").textContent = PHOTOS ? PHOTOS.length : "";
+    $("n-merch").textContent = MERCH ? MERCH.length : "";
     $("n-sponsors").textContent = SPONSORS ? SPONSORS.filter((x) => x.stage !== "no").length : "";
     const need = SESSION ? meNeeds().length : 0;
     $("n-me").textContent = need ? String(need) : "";
@@ -1997,7 +2002,8 @@
                          text: e.state === "late" ? "overdue" : e.state === "target" ? "not locked"
                              : e.state === "past" ? "happened" : (e.task ? "a job, due" : "confirmed") }),
             el("span", { class: "pill due", text: relDay(e.date) }),
-            calEditButton(e, key)
+            calEditButton(e, key),
+            calRemoveButton(e)
           ]),
           CAL_FORM && CAL_FORM.key === key ? CAL_FORM.node : null
         ])
@@ -2013,7 +2019,7 @@
         el("div", { style: "min-width:0;flex:1" }, [
           el("div", { class: "t", text: u.title }),
           u.sub ? el("div", { class: "sub", text: u.sub }) : null,
-          el("div", { class: "meta", style: "margin-top:5px" }, [calEditButton(u, key, "Set a date")]),
+          el("div", { class: "meta", style: "margin-top:5px" }, [calEditButton(u, key, "Set a date"), calRemoveButton(u)]),
           CAL_FORM && CAL_FORM.key === key ? CAL_FORM.node : null
         ])
       ]));
@@ -2051,6 +2057,31 @@
       } });
   }
 
+  /* Take something off the calendar. A job or meeting is deleted outright;
+     a plan date (or an edited copy of one) is hidden rather than deleted,
+     or the plan's own version would come straight back. */
+  async function removeCalItem(e) {
+    if (e.task) await window.ChamLive.deleteTask(e.task.id);
+    else if (e.meeting) await window.ChamLive.deleteMeeting(e.meeting.id);
+    else if (e.plan) await window.ChamLive.saveEvent(null, { name: e.title, date: e.date || "", hidden: true, replaces: planKey(e.plan) });
+    else if (e.ev.replaces) await window.ChamLive.saveEvent(e.ev.id, { hidden: true });
+    else await window.ChamLive.deleteEvent(e.ev.id);
+    if (CAL_FORM && CAL_FORM.key === calKey(e)) CAL_FORM = null;
+    renderCalendar();
+    toast(e.task ? "Job deleted" : "Removed from the calendar");
+  }
+  function calRemoveButton(e) {
+    if (!calAdmin() || (e.task && !e.task.id)) return null;
+    return el("button", { class: "act ghost danger cal-rm", type: "button", text: "Remove",
+      title: e.task ? "Delete this job" : e.meeting ? "Delete this meeting" : "Take it off the calendar",
+      onclick: async (x) => {
+        const b = x.currentTarget;
+        if (!tapTwice(b, e.task ? "Tap again to delete the job" : e.meeting ? "Tap again to delete the meeting" : "Tap again to remove")) return;
+        b.disabled = true;
+        try { await removeCalItem(e); } catch (err) { b.disabled = false; toast("Didn’t remove. " + (err.code || err.message)); }
+      } });
+  }
+
   /* an event, or one of the plan's dates (which becomes a saved event) */
   function eventEntryForm(e) {
     const ev = e.ev || null, plan = e.plan || null;
@@ -2070,13 +2101,7 @@
     } });
     const del = el("button", { class: "act ghost danger", type: "button", text: "Remove", onclick: async (x) => {
       if (!tapTwice(x.currentTarget, "Tap again to remove")) return;
-      try {
-        // a plan date (or a copy of one) is hidden, not deleted, or the plan's version would come back
-        if (plan) await window.ChamLive.saveEvent(null, { name: e.title, date: e.date || "", hidden: true, replaces: planKey(plan) });
-        else if (ev.replaces) await window.ChamLive.saveEvent(ev.id, { hidden: true });
-        else await window.ChamLive.deleteEvent(ev.id);
-        closeCalForm(); toast("Removed from the calendar");
-      } catch (err) { fail(err); }
+      try { await removeCalItem(e); } catch (err) { fail(err); }
     } });
     return el("div", { class: "tedit cal-form" }, [
       el("div", { class: "adrow" }, [name, date]),
@@ -2996,6 +3021,170 @@
     });
     grid.appendChild(wall);
   }
+
+  /* ------------------------------------------------------------------ *
+   * merch
+   *
+   * The hoodie and T-shirt designs. Pictures of the drafts live in /merch
+   * like photos do (members only - some are phone shots of a screen, so
+   * they stay out of the public code); the concept ideas are drawn by
+   * merch.js and only named in /merch. Anyone can add a design; an admin,
+   * or whoever added it, can remove it.
+   * ------------------------------------------------------------------ */
+  const MERCH_GROUPS = [
+    ["final", "Colourways", "The “Changing Lives Through Compassion” tee: clothesline and Chạm logo on the front, torn-paper lettering on the back."],
+    ["canva", "Canva drafts", "The handprint set: school logo, a clothesline of little outfits and a flower or sun on the front; “CHAM” over colourful handprints on the back."],
+    ["sketch", "Sketches", "Procreate sketches: big stars labelled “CHAM” and “DREAMS”, hand-lettered motto, a clothesline at the collar."],
+    ["idea", "Concept ideas", "Four concepts that each borrow a real print style, in one or two ink colours. Tap a colour dot to try another shirt colour."]
+  ];
+  const merchIdea = (m) => (window.ChamMerch ? window.ChamMerch.IDEAS.find((i) => i.id === m.idea) : null);
+  const merchShirt = {};                 // idea id -> the shirt colour picked
+  let MERCH_SHOWN = [];                  // what the viewer steps through
+
+  function canRemoveMerch(m) {
+    return Boolean(SESSION && window.ChamLive && (SESSION.admin || (m.createdBy && m.createdBy === SESSION.email)));
+  }
+
+  function renderMerchAdd() {
+    const box = $("merch-add");
+    const on = Boolean(SESSION && window.ChamLive);
+    box.hidden = !on;
+    if (!on || box.childElementCount) return;
+    const file = el("input", { class: "ad-in", type: "file", accept: "image/*", "aria-label": "Picture of the design" });
+    const title = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "What it is, e.g. Hoodie v2", "aria-label": "Title" });
+    const caption = el("input", { class: "ad-in wide", type: "text", maxlength: "300", placeholder: "A line about it (optional)", "aria-label": "About it" });
+    const group = el("select", { class: "ad-in", "aria-label": "Kind of design" },
+      MERCH_GROUPS.filter(([k]) => k !== "idea").map(([k, label]) => el("option", { value: k, text: label })));
+    group.value = "canva";
+    const msg = el("span", { class: "ad-msg" });
+    const go = el("button", { class: "au-go", type: "button", text: "Add design", onclick: async () => {
+      msg.classList.remove("bad");
+      const f = file.files && file.files[0];
+      if (!f) { msg.textContent = "Pick a picture first."; msg.classList.add("bad"); return; }
+      if (!title.value.trim()) { msg.textContent = "Give it a name."; msg.classList.add("bad"); return; }
+      go.disabled = true; go.textContent = "Adding…";
+      try {
+        const img = await shrink(f);
+        await window.ChamLive.addMerch({ group: group.value, title: title.value.trim(), caption: caption.value.trim(),
+          data: img.data, w: img.w, h: img.h, who: SESSION.personKey });
+        file.value = ""; title.value = ""; caption.value = "";
+        msg.textContent = "Added.";
+      } catch (err) { msg.textContent = "Didn’t add it. " + (err.code || err.message); msg.classList.add("bad"); }
+      go.disabled = false; go.textContent = "Add design";
+    } });
+    box.replaceChildren(el("details", { class: "merch-add" }, [
+      el("summary", { text: "Add a design" }),
+      el("div", { class: "adrow" }, [file, group]),
+      el("div", { class: "adrow" }, [title]),
+      el("div", { class: "adrow" }, [caption]),
+      el("div", { class: "adrow" }, [go, msg])
+    ]));
+  }
+
+  function renderMerch() {
+    const grid = $("merch-grid");
+    grid.replaceChildren();
+    if (!SESSION) { $("merch-add").hidden = true; return; }
+    if (window.ChamMerch) window.ChamMerch.loadFonts();
+    renderMerchAdd();
+
+    const rows = (MERCH || []).filter((m) => m.kind !== "idea" || merchIdea(m))
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.title.localeCompare(b.title));
+
+    const fbox = $("merch-filters");
+    fbox.replaceChildren(...[["all", "All"]].concat(MERCH_GROUPS.map(([k, label]) => [k, label]))
+      .filter(([k]) => k === "all" || rows.some((m) => m.group === k))
+      .map(([k, label]) => el("button", { class: "chipbtn plain", type: "button", "aria-pressed": String(S.merchGroup === k), "data-k": k,
+        onclick: () => { S.merchGroup = k; renderMerch(); } }, [document.createTextNode(label),
+          el("span", { class: "c", text: String(k === "all" ? rows.length : rows.filter((m) => m.group === k).length) })])));
+
+    if (!rows.length) {
+      grid.appendChild(el("div", { class: "empty-state", text: MERCH ? "No designs yet. Add the first one above." : "Loading the designs…" }));
+      MERCH_SHOWN = [];
+      return;
+    }
+    MERCH_SHOWN = [];
+    MERCH_GROUPS.forEach(([k, label, about]) => {
+      if (S.merchGroup !== "all" && S.merchGroup !== k) return;
+      const items = rows.filter((m) => m.group === k);
+      if (!items.length) return;
+      grid.appendChild(el("h3", { class: "grp" }, [el("span", { text: label })]));
+      grid.appendChild(el("p", { class: "merch-about", text: about }));
+      const wall = el("div", { class: "mgrid" + (k === "idea" ? " ideas" : "") + (k === "final" ? " wide" : "") });
+      items.forEach((m) => { MERCH_SHOWN.push(m); wall.appendChild(merchCard(m)); });
+      grid.appendChild(wall);
+    });
+  }
+
+  function merchCard(m) {
+    const idea = m.kind === "idea" ? merchIdea(m) : null;
+    const tile = el("button", { class: "mtile", type: "button", "aria-label": "See " + m.title + " bigger", onclick: () => openMerch(m) });
+    if (idea) tile.innerHTML = window.ChamMerch.mockupSVG(idea, merchShirt[idea.id] || idea.shirts[0]);   // drawn by our own code, no user text
+    else tile.appendChild(el("img", { src: m.data, alt: m.title, loading: "lazy" }));
+
+    const foot = el("div", { class: "mfoot" }, [
+      el("div", { class: "mhead" }, [
+        el("b", { text: idea ? idea.title : m.title }),
+        idea ? el("span", { class: "mkind", text: idea.garment === "tee" ? "T-shirt" : "Hoodie" }) : null,
+        canRemoveMerch(m) ? el("button", { class: "act ghost danger", type: "button", text: "Remove",
+          onclick: async (e) => {
+            const b = e.currentTarget;
+            if (!tapTwice(b, "Tap again to remove")) return;
+            b.disabled = true;
+            try { await window.ChamLive.deleteMerch(m.id); toast("Design removed"); }
+            catch (err) { b.disabled = false; toast("Didn’t remove. " + (err.code || err.message)); }
+          } }) : null
+      ]),
+      (idea ? idea.desc : m.caption) ? el("p", { class: "mcap", text: idea ? idea.desc : m.caption }) : null
+    ]);
+    if (idea) {
+      const S2 = window.ChamMerch.SHIRTS;
+      const cur = merchShirt[idea.id] || idea.shirts[0];
+      foot.appendChild(el("div", { class: "swatches", role: "group", "aria-label": "Shirt colour" }, idea.shirts.map((s) =>
+        el("button", { class: "sw", type: "button", title: S2[s][0], "aria-label": S2[s][0], "aria-pressed": String(s === cur),
+          style: "background:" + S2[s][1],
+          onclick: (e) => {
+            merchShirt[idea.id] = s;
+            tile.querySelector("svg").setAttribute("style", window.ChamMerch.shirtVars(idea, s));
+            e.currentTarget.parentNode.querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-pressed", String(b === e.currentTarget)));
+          } }))));
+    }
+    return el("figure", { class: "pcard mcard" + (idea ? " idea" : ""), "data-sk": "merch:" + m.id }, [tile, foot]);
+  }
+
+  /* the viewer: one design big, with previous / next through what's shown */
+  let MLB_AT = 0;
+  function openMerch(m) {
+    MLB_AT = Math.max(0, MERCH_SHOWN.findIndex((x) => x.id === m.id));
+    showMerch();
+    $("merch-lb").hidden = false;
+    $("mlb-close").focus();
+  }
+  function showMerch() {
+    const m = MERCH_SHOWN[MLB_AT];
+    if (!m) return;
+    const stage = $("mlb-stage");
+    const idea = m.kind === "idea" ? merchIdea(m) : null;
+    if (idea) stage.innerHTML = window.ChamMerch.mockupSVG(idea, merchShirt[idea.id] || idea.shirts[0]);
+    else stage.replaceChildren(el("img", { src: m.data, alt: m.title }));
+    $("mlb-cap").textContent = (idea ? idea.title : m.title) + "  ·  " + (MLB_AT + 1) + " of " + MERCH_SHOWN.length;
+  }
+  (function merchViewerWiring() {
+    const lb = $("merch-lb");
+    if (!lb) return;
+    const close = () => { lb.hidden = true; $("mlb-stage").replaceChildren(); };
+    const step = (d) => { if (!MERCH_SHOWN.length) return; MLB_AT = (MLB_AT + d + MERCH_SHOWN.length) % MERCH_SHOWN.length; showMerch(); };
+    $("mlb-close").addEventListener("click", close);
+    $("mlb-prev").addEventListener("click", () => step(-1));
+    $("mlb-next").addEventListener("click", () => step(1));
+    lb.addEventListener("click", (e) => { if (e.target === lb) close(); });
+    document.addEventListener("keydown", (e) => {
+      if (lb.hidden) return;
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    });
+  })();
 
   /* ------------------------------------------------------------------ *
    * money
