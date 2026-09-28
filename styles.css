@@ -1451,3 +1451,16 @@
   /* the item a search result jumped to glows for a moment */
   .sk-hit { outline: 3px solid var(--marigold); outline-offset: 3px; border-radius: 10px; animation: sk-glow 2.4s ease-out; }
   @keyframes sk-glow { 0%, 40% { box-shadow: 0 0 0 8px var(--marigold-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* ---- editing the calendar ---- */
+#rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+#rail-head .cal-add { font-size: 12px; text-transform: none; letter-spacing: 0; font-family: var(--sans); font-weight: 500; }
+.evrow .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.evrow .cal-edit { margin-left: auto; padding: 3px 10px; font-size: 12px; }
+.evrow .cal-edit.on { color: var(--muted); }
+.cal-form { padding: 10px 0 0; margin-top: 10px; }
+.cal-form .adrow, .task .tedit .adrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cal-form .ad-in.wide, .task .tedit .ad-in.wide { flex: 1 1 220px; min-width: 0; }
+.cal-form .an-text, .task .tedit .an-text { width: 100%; }
+.cal-new { padding: 12px 14px; }
+.cal-new .filters { margin: 0; }

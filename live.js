@@ -599,6 +599,8 @@ if (!CONFIGURED) {
       const out = { updatedAt: serverTimestamp() };
       if (patch.title !== undefined) out.title = patch.title;
       if (patch.due !== undefined) out.due = patch.due || null;
+      if (patch.who !== undefined) out.who = patch.who;
+      if (patch.note !== undefined) out.note = patch.note;
       await updateDoc(doc(db, "tasks", id), out);
     },
     async setNote(id, note) {

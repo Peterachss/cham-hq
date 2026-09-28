@@ -169,7 +169,7 @@
       LEDGER = Array.isArray(rows) ? rows : null;
       render();
     },
-    setEventsDb(rows) { EVDB = Array.isArray(rows) ? rows : null; if (S.view === "updates") renderCountdown(); },
+    setEventsDb(rows) { EVDB = Array.isArray(rows) ? rows : null; render(); },
     setSysStatus(d) { SYS = d; if (S.view === "updates") { renderSystem(); renderToolbar(); } },
     setOnboarding(d) {
       const first = OB === null;
@@ -549,29 +549,58 @@
 
   /* A job with a due date IS a date in the calendar. Anything without one
      drops into "Waiting on a date", which is the honest place for it. */
+  /* The plan's own dates (EVENTS, UNDATED) come from the base data, which
+     the site can't write. Editing one saves a copy in /events that
+     "replaces" it (and removing one saves a hidden copy), so the plan
+     item steps aside and the copy shows instead. */
+  const planKey = (e) => (e.date || "undated") + "|" + e.title;
+  /* plan dates that step aside: ones edited or removed here, and ones an
+     admin has since set up as an event of the same name (the countdown's
+     "Halloween sale" is the plan's "Halloween sale", not a second one) */
+  const bare = (t) => String(t || "").toLowerCase().replace(/^target:\s*/, "").trim();
+  function replaced() {
+    const out = new Set((EVDB || []).map((e) => e.replaces).filter(Boolean));
+    const named = new Set((EVDB || []).filter((e) => !e.hidden && e.name).map((e) => bare(e.name)));
+    EVENTS.concat(UNDATED).forEach((e) => { if (named.has(bare(e.title))) out.add(planKey(e)); });
+    return out;
+  }
+  const evShown = (e) => !e.hidden && e.name;
+  function dbEntry(e) {
+    return { date: e.date, title: e.name, ev: e,
+      sub: e.sub || (e.locked ? "Locked in" : "Target date, not locked yet"),
+      state: e.date && e.date < TODAY ? "past" : e.locked ? "confirmed" : "target" };
+  }
+
   function calEvents() {
+    const gone = replaced();
+    const fromPlan = EVENTS.filter((e) => !gone.has(planKey(e))).map((e) => ({ ...e, plan: e }));
+    const fromDb = (EVDB || []).filter((e) => evShown(e) && e.date).map(dbEntry);
     const fromTasks = TASKS.filter((t) => t.due).map((t) => ({
       date: t.due,
       title: t.title,
       sub: (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + (t.note ? " \u00b7 " + t.note : ""),
       state: t.status === "done" ? "past" : (t.due < TODAY ? "late" : "confirmed"),
-      task: true
+      task: t
     }));
     const fromMeetings = (MEETINGS || []).filter((m) => m.date).map((m) => ({
       date: m.date, title: "Meeting: " + m.title,
       sub: m.people.map((k) => PEOPLE[k] ? PEOPLE[k].name : k).join(", "),
-      state: m.date < TODAY ? "past" : "confirmed"
+      state: m.date < TODAY ? "past" : "confirmed",
+      meeting: m
     }));
-    return EVENTS.concat(fromTasks, fromMeetings);
+    return fromPlan.concat(fromDb, fromTasks, fromMeetings);
   }
 
   function calUndated() {
+    const gone = replaced();
+    const fromPlan = UNDATED.filter((u) => !gone.has(planKey(u))).map((u) => ({ ...u, plan: u }));
+    const fromDb = (EVDB || []).filter((e) => evShown(e) && !e.date).map(dbEntry);
     const fromTasks = TASKS.filter((t) => !t.due && t.status !== "done").map((t) => ({
       title: t.title,
       sub: (PEOPLE[t.who] ? PEOPLE[t.who].name : t.who) + " \u00b7 nobody has set a date",
-      task: true
+      task: t
     }));
-    return UNDATED.concat(fromTasks);
+    return fromPlan.concat(fromDb, fromTasks);
   }
 
   function renderGlance() {
@@ -1394,7 +1423,7 @@
     const out = [];
     const names = new Set();
     (EVDB || []).forEach((e) => {
-      if (e.date && e.date >= TODAY) { out.push({ ...e, tentative: !e.locked, db: true }); names.add(e.name.toLowerCase()); }
+      if (evShown(e) && e.date && e.date >= TODAY) { out.push({ ...e, tentative: !e.locked, db: true }); names.add(e.name.toLowerCase()); }
     });
     (SALES || []).forEach((x) => {
       if (x.date && x.date >= TODAY && !names.has(x.name.toLowerCase())) out.push({ name: x.name, date: x.date, sale: x });
@@ -1402,8 +1431,9 @@
     (ACTS || []).forEach((a) => {
       if (a.date && a.date >= TODAY && !names.has(a.name.toLowerCase())) out.push({ name: a.name, date: a.date });
     });
-    if (!EVDB || !EVDB.length) {        // nothing set up yet: fall back to the plan's target dates
-      EVENTS.forEach((e) => {
+    if (!EVDB || !EVDB.some(evShown)) { // nothing set up yet: fall back to the plan's target dates
+      const gone = replaced();
+      EVENTS.filter((e) => !gone.has(planKey(e))).forEach((e) => {
         if (e.date >= TODAY && e.state !== "past" && /sale|fundrais|booth|drop|market|tournament|program/i.test(e.title))
           out.push({ name: e.title.replace(/^Target:\s*/i, ""), date: e.date, tentative: e.state === "target" });
       });
@@ -1946,36 +1976,161 @@
     rail.innerHTML = "";
     const onDay = ALL.filter((e) => e.date === S.selected);
     const list = onDay.length ? onDay : ALL.filter((e) => e.date >= TODAY).sort((a,b) => a.date < b.date ? -1 : 1);
-    $("rail-head").textContent = onDay.length ? "On " + pretty(S.selected) : "Coming up";
-    if (!list.length) rail.appendChild(el("div", { class: "empty-state", text: "Nothing on this day." }));
+    const admin = calAdmin();
+    $("rail-head").replaceChildren(
+      el("span", { text: onDay.length ? "On " + pretty(S.selected) : "Coming up" }),
+      admin && S.selected ? el("button", { class: "act ghost cal-add", type: "button", text: "+ Add on " + pretty(S.selected),
+        onclick: () => openCalForm("new:" + S.selected, () => newEntryForm(S.selected)) }) : null);
+    const adding = CAL_FORM && CAL_FORM.key.startsWith("new:") ? CAL_FORM.node : null;
+    if (adding) rail.appendChild(adding);
+    if (!list.length && !adding) rail.appendChild(el("div", { class: "empty-state", text: "Nothing on this day." + (admin ? " Tap + Add to put something on it." : "") }));
     list.forEach((e) => {
       const d = fromIso(e.date);
+      const key = calKey(e);
       rail.appendChild(el("div", { class: "card evrow " + e.state, "data-sk": "cal:" + e.date + "|" + e.title }, [
         el("div", { class: "d" }, [ el("span", { text: MON[d.getMonth()] }), el("b", { text: String(d.getDate()) }) ]),
-        el("div", { style: "min-width:0" }, [
+        el("div", { style: "min-width:0;flex:1" }, [
           el("div", { class: "t", text: e.title }),
-          el("div", { class: "sub", text: e.sub }),
+          e.sub ? el("div", { class: "sub", text: e.sub }) : null,
           el("div", { class: "meta", style: "margin-top:5px" }, [
             el("span", { class: "pill " + (e.state === "late" ? "late" : e.state === "target" ? "doing" : e.state === "past" ? "" : "done"),
                          text: e.state === "late" ? "overdue" : e.state === "target" ? "not locked"
                              : e.state === "past" ? "happened" : (e.task ? "a job, due" : "confirmed") }),
-            el("span", { class: "pill due", text: relDay(e.date) })
-          ])
+            el("span", { class: "pill due", text: relDay(e.date) }),
+            calEditButton(e, key)
+          ]),
+          CAL_FORM && CAL_FORM.key === key ? CAL_FORM.node : null
         ])
       ]));
     });
 
     const un = $("undated");
     un.replaceChildren();
-    {
-      calUndated().forEach((u) => un.appendChild(el("div", { class: "card evrow" }, [
+    calUndated().forEach((u) => {
+      const key = calKey(u);
+      un.appendChild(el("div", { class: "card evrow" }, [
         el("div", { class: "d", style: "min-width:46px" }, [el("b", { text: "?" })]),
-        el("div", { style: "min-width:0" }, [
+        el("div", { style: "min-width:0;flex:1" }, [
           el("div", { class: "t", text: u.title }),
-          el("div", { class: "sub", text: u.sub })
+          u.sub ? el("div", { class: "sub", text: u.sub }) : null,
+          el("div", { class: "meta", style: "margin-top:5px" }, [calEditButton(u, key, "Set a date")]),
+          CAL_FORM && CAL_FORM.key === key ? CAL_FORM.node : null
         ])
-      ])));
-    }
+      ]));
+    });
+  }
+
+  /* ----- editing the calendar -----
+     Admins can change anything on it: a job (title, who, date, note), an
+     event, a meeting, or one of the plan's own dates. The open form is kept
+     as a node and put back after every re-render, so a live update landing
+     mid-edit doesn't wipe what's been typed. */
+  let CAL_FORM = null;                  // { key, node }
+  const calAdmin = () => Boolean(SESSION && SESSION.admin && window.ChamLive);
+  function calKey(e) {
+    if (e.task) return "task:" + e.task.id;
+    if (e.meeting) return "meeting:" + e.meeting.id;
+    if (e.ev) return "ev:" + e.ev.id;
+    return "plan:" + planKey(e.plan || e);
+  }
+  function openCalForm(key, make) {
+    CAL_FORM = CAL_FORM && CAL_FORM.key === key ? null : { key, node: make() };   // tapping Edit again closes it
+    renderCalendar();
+    if (CAL_FORM) { const f = CAL_FORM.node.querySelector("input, select"); if (f) f.focus(); }
+  }
+  function closeCalForm() { CAL_FORM = null; renderCalendar(); }
+
+  function calEditButton(e, key, label) {
+    if (!calAdmin()) return null;
+    if (e.task && !e.task.id) return null;                                  // a job from the plan, not the live board
+    const open = CAL_FORM && CAL_FORM.key === key;
+    return el("button", { class: "act ghost cal-edit" + (open ? " on" : ""), type: "button", text: open ? "Close" : (label && !e.task ? label : "Edit"),
+      onclick: () => {
+        if (e.meeting) { setView("calendar"); openMeeting(e.meeting); const f = $("mt-form"); if (f) f.scrollIntoView({ block: "center" }); return; }
+        openCalForm(key, () => e.task ? taskForm(e.task, closeCalForm) : eventEntryForm(e));
+      } });
+  }
+
+  /* an event, or one of the plan's dates (which becomes a saved event) */
+  function eventEntryForm(e) {
+    const ev = e.ev || null, plan = e.plan || null;
+    const name = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: e.title || "", "aria-label": "What it is" });
+    const date = el("input", { class: "ad-in", type: "date", value: e.date || "", "aria-label": "Date" });
+    const sub = el("input", { class: "ad-in wide", type: "text", maxlength: "160", value: ev ? ev.sub || "" : e.sub || "", placeholder: "A line about it (optional)", "aria-label": "Details" });
+    const locked = el("input", { type: "checkbox", checked: ev ? ev.locked === true : e.state === "confirmed" || e.state === "past" });
+    const msg = el("span", { class: "ad-msg" });
+    const fail = (err) => { msg.textContent = "Didn’t save. " + (err.code || err.message); msg.classList.add("bad"); };
+    const save = el("button", { class: "au-go", type: "button", text: "Save", onclick: async () => {
+      if (!name.value.trim()) { msg.textContent = "It needs a name."; msg.classList.add("bad"); return; }
+      save.disabled = true;
+      const out = { name: name.value.trim(), date: date.value || "", sub: sub.value.trim(), locked: locked.checked };
+      if (plan) out.replaces = planKey(plan);
+      try { await window.ChamLive.saveEvent(ev ? ev.id : null, out); closeCalForm(); toast("Calendar updated"); }
+      catch (err) { save.disabled = false; fail(err); }
+    } });
+    const del = el("button", { class: "act ghost danger", type: "button", text: "Remove", onclick: async (x) => {
+      if (!tapTwice(x.currentTarget, "Tap again to remove")) return;
+      try {
+        // a plan date (or a copy of one) is hidden, not deleted, or the plan's version would come back
+        if (plan) await window.ChamLive.saveEvent(null, { name: e.title, date: e.date || "", hidden: true, replaces: planKey(plan) });
+        else if (ev.replaces) await window.ChamLive.saveEvent(ev.id, { hidden: true });
+        else await window.ChamLive.deleteEvent(ev.id);
+        closeCalForm(); toast("Removed from the calendar");
+      } catch (err) { fail(err); }
+    } });
+    return el("div", { class: "tedit cal-form" }, [
+      el("div", { class: "adrow" }, [name, date]),
+      el("div", { class: "adrow" }, [sub]),
+      el("label", { class: "sp-lbl" }, [locked, document.createTextNode(" Date is locked in (not just a target)")]),
+      el("div", { class: "adrow" }, [save, el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: closeCalForm }), del]),
+      el("span", { class: "ad-msg", text: date.value ? "Clear the date to move it to “Waiting on a date”." : "Give it a date and it goes on the calendar." }),
+      msg
+    ]);
+  }
+
+  /* + Add on a day: an event, or a job due that day */
+  function newEntryForm(day) {
+    let kind = "event";
+    const pick = el("div", { class: "filters" });
+    const title = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "Event, e.g. Cookie order run", "aria-label": "What it is" });
+    const date = el("input", { class: "ad-in", type: "date", value: day, "aria-label": "Date" });
+    const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Whose job" }));
+    who.value = SESSION && PEOPLE[SESSION.personKey] ? SESSION.personKey : "team";
+    const locked = el("input", { type: "checkbox", checked: true });
+    const lockRow = el("label", { class: "sp-lbl" }, [locked, document.createTextNode(" Date is locked in")]);
+    const msg = el("span", { class: "ad-msg" });
+    const show = () => {
+      who.hidden = kind !== "job"; lockRow.hidden = kind !== "event";
+      title.placeholder = kind === "job" ? "The job, e.g. Print the price signs" : "Event, e.g. Cookie order run";
+      pick.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === kind)));
+    };
+    [["event", "Event"], ["job", "Job due that day"]].forEach(([k, label]) => pick.appendChild(el("button", {
+      class: "chipbtn plain", type: "button", "data-k": k, text: label, onclick: () => { kind = k; show(); } })));
+    const save = el("button", { class: "au-go", type: "button", text: "Add", onclick: async () => {
+      if (!title.value.trim()) { msg.textContent = "Say what it is."; msg.classList.add("bad"); return; }
+      save.disabled = true;
+      try {
+        if (kind === "job") {
+          const id = await window.ChamLive.addTask({ who: who.value, title: title.value.trim(), due: date.value || null });
+          logActivity({ who: SESSION.personKey, ref: id, event: "assign",
+            text: "Gave " + (PEOPLE[who.value] ? PEOPLE[who.value].name : who.value) + " a job: **"
+              + title.value.trim() + "**" + (date.value ? ", due " + pretty(date.value) : "") });
+        } else {
+          await window.ChamLive.saveEvent(null, { name: title.value.trim(), date: date.value || "", locked: locked.checked, sub: "" });
+        }
+        closeCalForm(); toast(kind === "job" ? "Job added" : "Added to the calendar");
+      } catch (err) { save.disabled = false; msg.textContent = "Didn’t save. " + (err.code || err.message); msg.classList.add("bad"); }
+    } });
+    show();
+    [title].forEach((i) => i.addEventListener("keydown", (ev) => { if (ev.key === "Enter") save.click(); if (ev.key === "Escape") closeCalForm(); }));
+    return el("div", { class: "card tedit cal-form cal-new" }, [
+      el("b", { text: "Add to " + pretty(day) }),
+      pick,
+      el("div", { class: "adrow" }, [title, who, date]),
+      lockRow,
+      el("div", { class: "adrow" }, [save, el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: closeCalForm })]),
+      msg
+    ]);
   }
 
   $("cal-prev").addEventListener("click", () => { S.month = new Date(S.month.getFullYear(), S.month.getMonth()-1, 1); renderCalendar(); });
@@ -2057,7 +2212,10 @@
           ]));
         }
         if (canEdit(t)) body.appendChild(taskActions(t));
-        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status), "data-sk": "task:" + (t.id || t.title) }, [body]));
+        const editing = TASK_FORM && TASK_FORM.id === t.id && canEdit(t);
+        if (editing) body.hidden = true;
+        list.appendChild(el("article", { class: "card task s-" + (late ? "late" : t.status), "data-sk": "task:" + (t.id || t.title) },
+          [body, editing ? TASK_FORM.node : null]));
       });
       board.appendChild(list);
     });
@@ -2116,7 +2274,7 @@
     if (SESSION && SESSION.admin) {
       row.appendChild(el("button", {
         class: "act ghost", type: "button", text: "Edit",
-        onclick: (e) => openEditor(t, e.currentTarget.closest("article"))
+        onclick: () => openEditor(t)
       }));
       /* Nudge: buzz the owner's phone about this job. Not on your own jobs,
          the group's, or finished ones; once per job every ten minutes. */
@@ -2169,15 +2327,13 @@
       ]));
     }
 
-    row.appendChild(el("button", {
-      class: "act ghost", text: t.note ? "Edit note" : "Add note",
-      onclick: async () => {
-        const next = window.prompt("Note for “" + t.title + "”", t.note || "");
-        if (next === null) return;
-        try { await window.ChamLive.setNote(t.id, next.trim()); }
-        catch (err) { flash(row, "Did not save. " + (err.code || err.message)); }
-      }
-    }));
+    /* admins edit the note in the full editor; the owner gets just the note */
+    if (!(SESSION && SESSION.admin)) {
+      row.appendChild(el("button", {
+        class: "act ghost", type: "button", text: t.note ? "Edit note" : "Add note",
+        onclick: () => openEditor(t, true)
+      }));
+    }
 
     if (SESSION && SESSION.admin) {
       row.appendChild(el("button", {
@@ -2192,26 +2348,43 @@
     return row;
   }
 
-  /** Swap a job's card for a little form. Admins only - the security rules
-      refuse a title or date change from anybody else, so there is no point
-      showing it to them. */
-  function openEditor(t, card) {
-    if (!card || card.querySelector(".tedit")) return;
-    const body = card.querySelector(".body");
-    body.hidden = true;
+  /* The open job editor on the Tasks tab, kept as a node and put back after
+     each re-render so a live update doesn't wipe what's being typed. */
+  let TASK_FORM = null;                 // { id, node }
+  function openEditor(t, noteOnly) {
+    TASK_FORM = TASK_FORM && TASK_FORM.id === t.id ? null
+      : { id: t.id, node: taskForm(t, () => { TASK_FORM = null; renderTasks(); }, noteOnly) };
+    renderTasks();
+    if (TASK_FORM) { const f = TASK_FORM.node.querySelector("input, textarea"); if (f) f.focus(); }
+  }
 
-    const title = el("input", { class: "ad-in wide", type: "text", value: t.title, "aria-label": "What the job is" });
+  /** A job's editor. Admins change everything - what it is, whose it is,
+      when it's due, the note. Anyone else only gets the note on their own
+      job: the security rules refuse the rest from them, so it isn't shown. */
+  function taskForm(t, close, noteOnly) {
+    const full = Boolean(SESSION && SESSION.admin) && !noteOnly;
+    const title = el("input", { class: "ad-in wide", type: "text", maxlength: "160", value: t.title, "aria-label": "What the job is" });
+    const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Whose job" }));
+    who.value = t.who;
     const due = el("input", { class: "ad-in", type: "date", value: t.due || "", "aria-label": "Due date" });
+    const note = el("textarea", { class: "an-text", rows: "2", maxlength: "600", placeholder: "Note: where it's at, what's in the way", "aria-label": "Note" });
+    note.value = t.note || "";
     const msg = el("span", { class: "ad-msg" });
-
-    const close = () => { form.remove(); body.hidden = false; };
 
     const save = el("button", { class: "au-go", type: "button", text: "Save",
       onclick: async () => {
-        if (!title.value.trim()) { msg.textContent = "It needs a title."; msg.classList.add("bad"); return; }
+        if (full && !title.value.trim()) { msg.textContent = "It needs a title."; msg.classList.add("bad"); return; }
         save.disabled = true; save.textContent = "Saving\u2026";
         try {
-          await window.ChamLive.editTask(t.id, { title: title.value.trim(), due: due.value || null });
+          if (full) {
+            await window.ChamLive.editTask(t.id, { title: title.value.trim(), who: who.value, due: due.value || null, note: note.value.trim() });
+            if (who.value !== t.who) logActivity({ who: SESSION.personKey, ref: t.id + ":" + who.value, event: "assign",
+              text: "Gave " + (PEOPLE[who.value] ? PEOPLE[who.value].name : who.value) + " a job: **" + title.value.trim() + "**"
+                + (due.value ? ", due " + pretty(due.value) : "") });
+          } else {
+            await window.ChamLive.setNote(t.id, note.value.trim());
+          }
+          toast("Saved");
           close();
         } catch (err) {
           msg.textContent = "Did not save. " + (err.code || err.message);
@@ -2221,20 +2394,19 @@
       }
     });
 
-    const form = el("div", { class: "tedit" }, [
-      el("div", { class: "adrow" }, [title, due, save,
-        el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: close })]),
-      el("div", { class: "adrow" }, [
-        el("span", { class: "ad-msg", text: due.value ? "Clear the date to take it off the calendar." : "Give it a date and it appears on the calendar." }),
-        msg
-      ])
-    ]);
     [title, due].forEach((i) => i.addEventListener("keydown", (e) => {
       if (e.key === "Enter") save.click();
       if (e.key === "Escape") close();
     }));
-    card.appendChild(form);
-    title.focus();
+    note.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    return el("div", { class: "tedit" }, [
+      full ? el("div", { class: "adrow" }, [title]) : null,
+      full ? el("div", { class: "adrow" }, [who, due]) : null,
+      el("div", { class: "adrow" }, [note]),
+      el("div", { class: "adrow" }, [save, el("button", { class: "act ghost", type: "button", text: "Cancel", onclick: close }),
+        full ? el("span", { class: "ad-msg", text: "No date = \u201cWaiting on a date\u201d on the calendar." }) : null]),
+      msg
+    ]);
   }
 
   function flash(node, msg) {
@@ -4158,10 +4330,11 @@
       () => { S.updPerson = "all"; $("upd-filters").replaceChildren(); setView("updates"); })));
     (MEETINGS || []).forEach((m) => add("Meetings", "meeting:" + m.id, m.title, m.date ? pretty(m.date) : "",
       [m.notes].concat(m.people.map(nm), m.decisions.map((x) => x.text)).join(" "), () => setView("calendar")));
-    EVENTS.forEach((e) => add("Events", "cal:" + e.date + "|" + e.title, e.title, pretty(e.date) + (e.state === "target" ? " \u00b7 target" : ""), e.sub,
+    const gone = replaced();
+    EVENTS.filter((e) => !gone.has(planKey(e))).forEach((e) => add("Events", "cal:" + e.date + "|" + e.title, e.title, pretty(e.date) + (e.state === "target" ? " \u00b7 target" : ""), e.sub,
       () => { const d = fromIso(e.date); if (d) { S.month = new Date(d.getFullYear(), d.getMonth(), 1); S.selected = e.date; } setView("calendar"); }));
-    (EVDB || []).forEach((e) => add("Events", "countdown", e.name, (e.date ? pretty(e.date) : "") + (e.locked ? " \u00b7 locked in" : " \u00b7 target date"), e.line,
-      () => setView("updates")));
+    (EVDB || []).filter(evShown).forEach((e) => add("Events", e.date ? "cal:" + e.date + "|" + e.name : "countdown", e.name, (e.date ? pretty(e.date) : "") + (e.locked ? " \u00b7 locked in" : " \u00b7 target date"), [e.line, e.sub].join(" "),
+      () => { const d = e.date && fromIso(e.date); if (d) { S.month = new Date(d.getFullYear(), d.getMonth(), 1); S.selected = e.date; } setView(d ? "calendar" : "updates"); }));
     (SPONSORS || []).forEach((x) => add("Sponsors", "sponsor:" + x.id, x.name,
       (STAGES_SP.find(([k]) => k === x.stage) || ["", x.stage])[1] + (x.owner ? " \u00b7 " + nm(x.owner) : ""),
       [x.contact, x.ask].concat(x.log.map((l) => l.text)).join(" "), () => setView("sponsors")));
