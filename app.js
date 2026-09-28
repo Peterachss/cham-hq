@@ -3041,6 +3041,7 @@
   const merchShirt = {};                 // idea id -> the shirt colour picked
   let MERCH_SHOWN = [];                  // what the viewer steps through
 
+  const canManageMerch = (m) => canRemoveMerch(m);
   function canRemoveMerch(m) {
     return Boolean(SESSION && window.ChamLive && (SESSION.admin || (m.createdBy && m.createdBy === SESSION.email)));
   }
@@ -3111,12 +3112,64 @@
       grid.appendChild(el("h3", { class: "grp" }, [el("span", { text: label })]));
       grid.appendChild(el("p", { class: "merch-about", text: about }));
       const wall = el("div", { class: "mgrid" + (k === "idea" ? " ideas" : "") + (k === "final" ? " wide" : "") });
-      items.forEach((m) => { MERCH_SHOWN.push(m); wall.appendChild(merchCard(m)); });
+      items.forEach((m, i) => { MERCH_SHOWN.push(m); wall.appendChild(merchCard(m, items, i)); });
       grid.appendChild(wall);
     });
   }
 
-  function merchCard(m) {
+  /* Move a design one place earlier (-1) or later (+1) in its section. Its
+     order becomes a number between its new neighbours, so only this one
+     design changes - nobody else's is touched. */
+  function merchStep(m, items, i, d) {
+    const j = i + d;
+    if (j < 0 || j >= items.length) return null;
+    const far = items[j + d];
+    const near = items[j].order || 0;
+    return far ? (near + (far.order || 0)) / 2 : near + d;
+  }
+  async function merchMove(m, patch, btn) {
+    if (btn) btn.disabled = true;
+    try { await window.ChamLive.moveMerch(m.id, patch); }
+    catch (err) { if (btn) btn.disabled = false; toast("Didn’t move it. " + (err.code || err.message)); }
+  }
+  function merchRemoveButton(m, after) {
+    return el("button", { class: "act ghost danger m-rm", type: "button", text: "Remove",
+      title: "Take this design off the Merch tab",
+      onclick: async (e) => {
+        const b = e.currentTarget;
+        if (!tapTwice(b, "Tap again to remove")) return;
+        b.disabled = true;
+        try { await window.ChamLive.deleteMerch(m.id); toast("Design removed"); if (after) after(); }
+        catch (err) { b.disabled = false; toast("Didn’t remove. " + (err.code || err.message)); }
+      } });
+  }
+  function merchTools(m, items, i) {
+    if (!canManageMerch(m)) return null;
+    const earlier = merchStep(m, items, i, -1), later = merchStep(m, items, i, 1);
+    const tools = el("div", { class: "mtools" }, [
+      el("button", { class: "act ghost m-mv", type: "button", text: "←", title: "Move earlier", "aria-label": "Move " + m.title + " earlier",
+        disabled: earlier === null, onclick: (e) => merchMove(m, { order: earlier }, e.currentTarget) }),
+      el("button", { class: "act ghost m-mv", type: "button", text: "→", title: "Move later", "aria-label": "Move " + m.title + " later",
+        disabled: later === null, onclick: (e) => merchMove(m, { order: later }, e.currentTarget) })
+    ]);
+    if (m.kind !== "idea") {
+      const to = el("select", { class: "ad-in m-to", "aria-label": "Move " + m.title + " to another section" },
+        [el("option", { value: "", text: "Move to…" })].concat(MERCH_GROUPS.filter(([k]) => k !== "idea" && k !== m.group)
+          .map(([k, label]) => el("option", { value: k, text: label }))));
+      to.addEventListener("change", () => {
+        if (!to.value) return;
+        const last = Math.max(0, ...(MERCH || []).filter((x) => x.group === to.value).map((x) => x.order || 0));
+        const name = (MERCH_GROUPS.find(([k]) => k === to.value) || [])[1];
+        to.disabled = true;
+        merchMove(m, { group: to.value, order: last + 1 }).then(() => toast("Moved to " + name));
+      });
+      tools.appendChild(to);
+    }
+    tools.appendChild(merchRemoveButton(m));
+    return tools;
+  }
+
+  function merchCard(m, items, i) {
     const idea = m.kind === "idea" ? merchIdea(m) : null;
     const tile = el("button", { class: "mtile", type: "button", "aria-label": "See " + m.title + " bigger", onclick: () => openMerch(m) });
     if (idea) tile.innerHTML = window.ChamMerch.mockupSVG(idea, merchShirt[idea.id] || idea.shirts[0]);   // drawn by our own code, no user text
@@ -3125,15 +3178,7 @@
     const foot = el("div", { class: "mfoot" }, [
       el("div", { class: "mhead" }, [
         el("b", { text: idea ? idea.title : m.title }),
-        idea ? el("span", { class: "mkind", text: idea.garment === "tee" ? "T-shirt" : "Hoodie" }) : null,
-        canRemoveMerch(m) ? el("button", { class: "act ghost danger", type: "button", text: "Remove",
-          onclick: async (e) => {
-            const b = e.currentTarget;
-            if (!tapTwice(b, "Tap again to remove")) return;
-            b.disabled = true;
-            try { await window.ChamLive.deleteMerch(m.id); toast("Design removed"); }
-            catch (err) { b.disabled = false; toast("Didn’t remove. " + (err.code || err.message)); }
-          } }) : null
+        idea ? el("span", { class: "mkind", text: idea.garment === "tee" ? "T-shirt" : "Hoodie" }) : null
       ]),
       (idea ? idea.desc : m.caption) ? el("p", { class: "mcap", text: idea ? idea.desc : m.caption }) : null
     ]);
@@ -3149,6 +3194,7 @@
             e.currentTarget.parentNode.querySelectorAll(".sw").forEach((b) => b.setAttribute("aria-pressed", String(b === e.currentTarget)));
           } }))));
     }
+    foot.append(merchTools(m, items || [m], i || 0));     // append skips the nothing a non-manager gets
     return el("figure", { class: "pcard mcard" + (idea ? " idea" : ""), "data-sk": "merch:" + m.id }, [tile, foot]);
   }
 
@@ -3168,6 +3214,8 @@
     if (idea) stage.innerHTML = window.ChamMerch.mockupSVG(idea, merchShirt[idea.id] || idea.shirts[0]);
     else stage.replaceChildren(el("img", { src: m.data, alt: m.title }));
     $("mlb-cap").textContent = (idea ? idea.title : m.title) + "  ·  " + (MLB_AT + 1) + " of " + MERCH_SHOWN.length;
+    const rm = $("mlb-rm");
+    rm.replaceChildren(canManageMerch(m) ? merchRemoveButton(m, () => { $("merch-lb").hidden = true; $("mlb-stage").replaceChildren(); }) : "");
   }
   (function merchViewerWiring() {
     const lb = $("merch-lb");

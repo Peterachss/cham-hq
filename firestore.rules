@@ -62,7 +62,13 @@ service cloud.firestore {
                     && mi().who == me().personKey
                     && mi().createdBy == email()
                     && mi().createdAt == request.time;
-      allow update: if false;
+      // moving one: which section it's in and where it sits, nothing else.
+      // A drawn idea stays with the ideas; a picture can't join them.
+      allow update: if (isAdmin() || (isMember() && resource.data.createdBy == email()))
+                    && mi().diff(resource.data).affectedKeys().hasOnly(['group', 'order'])
+                    && mi().group in ['final', 'canva', 'sketch', 'idea']
+                    && (mi().group == 'idea') == (resource.data.kind == 'idea')
+                    && mi().order is number;
       allow delete: if isAdmin() || (isMember() && resource.data.createdBy == email());
     }
 

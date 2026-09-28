@@ -672,6 +672,13 @@ if (!CONFIGURED) {
       });
     },
     async deleteMerch(id) { await deleteDoc(doc(db, "merch", id)); },
+    /** move a design: which section, and where in it (order is just a number to sort by) */
+    async moveMerch(id, patch) {
+      const out = {};
+      if (patch.group !== undefined) out.group = patch.group;
+      if (patch.order !== undefined) out.order = patch.order;
+      await updateDoc(doc(db, "merch", id), out);
+    },
 
     async addMoney(e) {
       await addDoc(collection(db, "expenses"), {

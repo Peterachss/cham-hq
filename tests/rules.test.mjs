@@ -35,6 +35,7 @@ async function seed() {
     await setDoc(doc(db, "photos", "p-emily"), { who: "emily", data: "x", date: "2026-09-26" });
     await setDoc(doc(db, "merch", "m-seed"), { kind: "photo", group: "final", title: "Six colourways", data: "x", who: "peter", createdBy: "" });
     await setDoc(doc(db, "merch", "m-emily"), { kind: "photo", group: "sketch", title: "Stars", data: "x", who: "emily", createdBy: EMILY });
+    await setDoc(doc(db, "merch", "m-idea"), { kind: "idea", group: "idea", title: "Varsity", idea: "varsity", order: 9, who: "peter", createdBy: "" });
     await setDoc(doc(db, "updates", "u-emily"), { who: "emily", text: "hi", date: "2026-09-26" });
     await setDoc(doc(db, "pushSubs", "s-emily"), { email: EMILY, endpoint: "https://fcm.googleapis.com/e", keys: {} });
     await setDoc(doc(db, "chatDrafts", "2026-09-26"), { date: "2026-09-26", status: "pending", lines: [] });
@@ -331,7 +332,17 @@ const cases = [
   ["only the known groups",                  false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { group: "secret" }))],
   ["no extra fields on a design",            false, () => addDoc(collection(as(EMILY), "merch"), MER(EMILY, "emily", { public: true }))],
   ["stranger cannot add a design",           false, () => addDoc(collection(as(STRANGER), "merch"), MER(STRANGER, "x"))],
-  ["designs cannot be edited",               false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { title: "y" })],
+  ["a design's title can't be edited",       false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { title: "y" })],
+  ["a design's picture can't be swapped",    false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { data: "z" })],
+  ["admin moves a design to another section", true, () => updateDoc(doc(as(BACH), "merch/m-seed"), { group: "canva", order: 4 })],
+  ["admin reorders a design",                true,  () => updateDoc(doc(as(PETER), "merch/m-seed"), { order: 7.5 })],
+  ["member moves their own design",          true,  () => updateDoc(doc(as(EMILY), "merch/m-emily"), { group: "final", order: 2 })],
+  ["member cannot move someone else's",      false, () => updateDoc(doc(as(EMILY), "merch/m-seed"), { order: 3 })],
+  ["no moving into a made-up section",       false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { group: "secret", order: 1 })],
+  ["a picture can't join the drawn ideas",   false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { group: "idea", order: 1 })],
+  ["a drawn idea stays with the ideas",      false, () => updateDoc(doc(as(PETER), "merch/m-idea"), { group: "canva", order: 1 })],
+  ["order must be a number",                 false, () => updateDoc(doc(as(PETER), "merch/m-seed"), { order: "first" })],
+  ["stranger cannot move a design",          false, () => updateDoc(doc(as(STRANGER), "merch/m-emily"), { order: 1 })],
   ["member removes their own design",        true,  () => deleteDoc(doc(as(EMILY), "merch/m-emily"))],
   ["member cannot remove someone else's",    false, () => deleteDoc(doc(as(EMILY), "merch/m-seed"))],
   ["admin removes any design",               true,  () => deleteDoc(doc(as(BACH), "merch/m-seed"))],
