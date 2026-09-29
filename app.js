@@ -1071,6 +1071,14 @@
           logActivity({ who: SESSION.personKey, ref: p.id, event: "pollclosed", text: "\ud83d\udcca Poll closed: **" + p.question + "** \u2192 " + pollResult(p) });
         } catch (err) { b.disabled = false; toast("Didn\u2019t close. " + (err.code || err.message)); }
       } }) : null;
+      const del = admin ? el("button", { class: "act ghost danger", type: "button", text: "Delete poll",
+        title: "Delete this poll, its votes and its lines in the feed", onclick: async (e) => {
+        const b = e.currentTarget;
+        if (!tapTwice(b, "Tap again to delete it for good")) return;
+        b.disabled = true;
+        try { await window.ChamLive.deletePoll(p.id); toast("Poll deleted"); }
+        catch (err) { b.disabled = false; toast("Didn’t delete. " + (err.code || err.message)); }
+      } }) : null;
       return el("section", { class: "card poll" + (open ? "" : " closed") }, [
         el("div", { class: "poll-head" }, [
           el("span", { class: "poll-ic", "aria-hidden": "true", text: "\ud83d\udcca" }),
@@ -1081,7 +1089,7 @@
         el("div", { class: "poll-foot" }, [
           el("span", { text: answered + " of " + all.length + " answered" + (open ? (mine ? " \u00b7 tap another option to change your vote" : " \u00b7 tap one to vote") : "") }),
           el("span", { class: "poll-who", text: who }),
-          close
+          close || del ? el("div", { class: "poll-acts" }, [close, del]) : null
         ])
       ]);
     }));

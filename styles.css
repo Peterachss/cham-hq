@@ -1522,3 +1522,5 @@ svg.mock .lbl { fill: #7a7a72; font: 700 11px var(--sans, sans-serif); letter-sp
 .mtools .m-to { padding: 4px 8px; font-size: 12.5px; max-width: 150px; }
 .mtools .m-rm { margin-left: auto; padding: 4px 12px; font-size: 12.5px; }
 #mlb-rm .m-rm { padding: 5px 14px; font-size: 13px; }
+.poll-foot .poll-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.poll-foot .poll-acts .act { margin-left: 0; }

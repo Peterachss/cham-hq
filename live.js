@@ -33,7 +33,7 @@ if (!CONFIGURED) {
   } = auth_;
   const {
     getFirestore, collection, doc, getDoc, onSnapshot,
-    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, orderBy, limit
+    addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, orderBy, limit, getDocs
   } = store_;
 
   /* a subscription's document id is a hash of its endpoint, so the same
@@ -812,6 +812,14 @@ if (!CONFIGURED) {
     async closePoll(id) {
       await updateDoc(doc(db, "polls", id), { status: "closed", closedAt: serverTimestamp(),
         closedBy: auth.currentUser.email.toLowerCase() });
+    },
+    /** admins: a poll gone for good - its votes and the feed lines it made
+        ("Asked everyone...", "Poll closed...") go with it */
+    async deletePoll(id) {
+      const votes = await getDocs(query(collection(db, "pollVotes"), where("poll", "==", id)));
+      const lines = await getDocs(query(collection(db, "updates"), where("ref", "==", id)));
+      await Promise.all(votes.docs.map((d) => deleteDoc(d.ref)).concat(lines.docs.map((d) => deleteDoc(d.ref))));
+      await deleteDoc(doc(db, "polls", id));
     },
     /* your vote, under your own email - voting again just changes it */
     async vote(pollId, choice, who) {
