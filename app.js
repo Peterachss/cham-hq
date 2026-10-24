@@ -198,6 +198,7 @@
       render();
     },
     setSession(s) {
+      manualOrderForms.clear();
       // a copy, so switching Admin mode off never changes what live.js subscribed to
       SESSION = s ? { ...s, _admin: s.admin === true, _sysadmin: s.sysadmin === true } : null;
       if (SESSION) applyAdminMode();
@@ -3790,7 +3791,7 @@
    * the takings go into the money log with one tap.
    * ------------------------------------------------------------------ */
   const orderLink = (id) => location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html?sale=" + encodeURIComponent(id);
-  const qtyOf = (n) => Math.max(0, Math.min(20, Math.floor(Number(n) || 0)));
+  const qtyOf = (n) => Math.max(0, Math.min(999, Math.floor(Number(n) || 0)));
   function orderTotal(o, sale) {
     return (sale.items || []).reduce((a, it) => a + qtyOf(o.items[it.id]) * (it.price || 0), 0);
   }
@@ -4158,7 +4159,7 @@
     const allergens = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "Allergens, e.g. wheat, dairy, egg (food sales)", "aria-label": "Allergens" });
     const rows = el("div", { class: "sf-items" });
     const addRow = () => rows.appendChild(el("div", { class: "sf-item" }, [
-      el("input", { class: "ad-in wide sf-n", type: "text", maxlength: "40", placeholder: "Item, e.g. Vanilla", "aria-label": "Item" }),
+      el("input", { class: "ad-in wide sf-n", type: "text", maxlength: "40", placeholder: "Product, e.g. Spider-Man keychain", "aria-label": "Item" }),
       el("input", { class: "ad-in sf-p", type: "text", inputmode: "numeric", placeholder: "Price, e.g. 30k", "aria-label": "Price" })
     ]));
     addRow(); addRow();
@@ -4186,10 +4187,10 @@
     });
     const form = el("div", { class: "sale-form", id: "sale-form", hidden: true }, [
       el("div", { class: "sf-row" }, [name, date]), pickup, note, allergens,
-      el("span", { class: "sf-k", text: "Items and prices" }), rows,
+      el("span", { class: "sf-k", text: "Products and prices (add buyers after creating the sale)" }), rows,
       el("div", { class: "sf-row" }, [
         el("div", { class: "sf-row" }, [
-          el("button", { class: "act ghost", type: "button", text: "+ Another item", onclick: () => { if (rows.childElementCount < 12) addRow(); } }),
+          el("button", { class: "act ghost", type: "button", text: "+ Another item", onclick: () => { addRow(); } }),
           /* merch: turn the first item into one row per size, same price */
           el("button", { class: "act ghost", type: "button", text: "Split into sizes S\u2013XL", title: "For shirts: fill in the first item, then tap this",
             onclick: () => {
@@ -4206,7 +4207,49 @@
     return form;
   }
 
+  function manualOrderForm(s) {
+    const buyer = el("input", { class: "ad-in wide", maxlength: "60", placeholder: "Buyer name", "aria-label": "Buyer name" });
+    const cls = el("input", { class: "ad-in", maxlength: "20", placeholder: "Class (optional)", "aria-label": "Buyer class" });
+    const pay = el("select", { class: "ad-in", "aria-label": "Payment method" }, [el("option", { value: "cash", text: "Cash" }), el("option", { value: "transfer", text: "Bank transfer" })]);
+    const quantities = new Map();
+    const total = el("b", { text: fmtVnd(0), "aria-live": "polite" });
+    const msg = el("span", { class: "ad-msg", role: "status" });
+    const recount = () => { msg.textContent = ""; msg.classList.remove("bad"); total.textContent = fmtVnd((s.items || []).reduce((n, it) => n + Number(quantities.get(it.id).value || 0) * it.price, 0)); };
+    const rows = (s.items || []).map((it) => {
+      const q = el("input", { class: "ad-in", type: "number", min: "0", max: "999", step: "1", value: "0", inputmode: "numeric", "aria-label": "Quantity for " + it.name, oninput: recount });
+      quantities.set(it.id, q);
+      return el("label", { class: "manual-order-item" }, [el("span", {}, [el("b", { text: it.name }), el("small", { text: fmtVnd(it.price) + " each" })]), q]);
+    });
+    const save = el("button", { class: "au-go", type: "button", text: "Save order" });
+    save.onclick = async () => {
+      const items = {};
+      const bad = (t) => { msg.textContent = t; msg.classList.add("bad"); };
+      if (!buyer.value.trim()) { buyer.focus(); return bad("Enter the buyer’s name."); }
+      for (const [id, q] of quantities) {
+        const n = Number(q.value);
+        if (!Number.isInteger(n) || n < 0 || n > 999) { q.focus(); return bad("Use whole quantities from 0 to 999."); }
+        if (n) items[id] = n;
+      }
+      if (!Object.keys(items).length) return bad("Enter a quantity for at least one product.");
+      if (Object.keys(items).length > 12) return bad("Save up to 12 different products per order; use a second order for more.");
+      save.disabled = true; msg.textContent = "Saving…"; msg.classList.remove("bad");
+      try {
+        await window.ChamLive.addManualOrder(s.id, { name: buyer.value.trim(), cls: cls.value.trim(), items, pay: pay.value });
+        buyer.value = ""; cls.value = ""; quantities.forEach((q) => { q.value = "0"; }); recount();
+        msg.textContent = "Order saved. You can add the next buyer."; toast("Order saved"); buyer.focus();
+      } catch (e) { bad("Couldn’t save. " + (e.code || e.message)); }
+      finally { save.disabled = false; }
+    };
+    return el("details", { class: "sl-det manual-order" }, [el("summary", { text: "+ Add order" }),
+      el("div", { class: "manual-order-form" }, [el("p", { class: "an-sub", text: "One buyer per order. Enter how many of each product they want." }),
+        el("div", { class: "sf-row" }, [buyer, cls]), ...rows,
+        el("div", { class: "sf-row" }, [pay, total, save]), msg])]);
+  }
+
+  const manualOrderForms = new Map();
   function saleCard(s) {
+    const formKey = s.id + JSON.stringify(s.items);
+    if (!manualOrderForms.has(formKey)) manualOrderForms.set(formKey, manualOrderForm(s));
     const admin = Boolean(SESSION && SESSION.admin);
     const os = (ORDERS || []).filter((o) => o.sale === s.id).sort((a, b) => (a.pickedUp - b.pickedUp) || (a.at - b.at));
     const make = {};
@@ -4288,7 +4331,7 @@
     });
 
     return el("section", { class: "sale-card" + (s.open ? " open" : ""), "data-sk": "sale:" + s.id }, [
-      head, tools, os.length ? makeLine : null, os.length ? nums : el("p", { class: "sl-empty", text: s.open ? "No orders yet \u2014 share the link." : "No orders." }),
+      head, tools, admin && s.open ? manualOrderForms.get(formKey) : null, os.length ? makeLine : null, os.length ? nums : el("p", { class: "sl-empty", text: s.open ? "No orders yet \u2014 add a buyer here or share the link." : "No orders." }),
       logBtn,
       os.length ? el("details", { class: "sl-det", open: os.length <= 40 }, [el("summary", { text: "All " + os.length + " orders" }), rows]) : null
     ]);

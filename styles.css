@@ -1524,3 +1524,13 @@ svg.mock .lbl { fill: #7a7a72; font: 700 11px var(--sans, sans-serif); letter-sp
 #mlb-rm .m-rm { padding: 5px 14px; font-size: 13px; }
 .poll-foot .poll-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 .poll-foot .poll-acts .act { margin-left: 0; }
+
+/* Manual order entry uses the same sale surface on phone and desktop. */
+.manual-order { margin: 16px 0; }
+.manual-order-form { display: grid; gap: 12px; padding: 14px 0; }
+.manual-order-item { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.manual-order-item > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.manual-order-item small { color: var(--muted); }
+.manual-order-item input { width: 88px; min-height: 44px; flex: 0 0 88px; }
+.manual-order-form .sf-row { flex-wrap: wrap; }
+.manual-order-form .ad-msg { min-height: 1.5em; }

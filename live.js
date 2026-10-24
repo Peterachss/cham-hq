@@ -757,6 +757,14 @@ if (!CONFIGURED) {
     },
     async setSaleOpen(id, open) { await updateDoc(doc(db, "sales", id), { open, updatedAt: serverTimestamp() }); },
     async setSaleLogged(id, logged) { await updateDoc(doc(db, "sales", id), { logged, updatedAt: serverTimestamp() }); },
+    async addManualOrder(sale, order) {
+      const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => alphabet[b % alphabet.length]).join("");
+      return (await addDoc(collection(db, "orders"), {
+        sale, name: order.name, cls: order.cls || "", contact: "", note: "", items: order.items,
+        pay: order.pay, code, paid: false, pickedUp: false, pushed: false, createdAt: serverTimestamp()
+      })).id;
+    },
     async setOrder(id, patch, by) {
       await updateDoc(doc(db, "orders", id), { ...patch, updatedAt: serverTimestamp(), updatedBy: by || "" });
     },
