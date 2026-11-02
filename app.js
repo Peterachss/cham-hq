@@ -509,6 +509,9 @@
   function setView(v) {
     S.view = v;
     document.body.dataset.view = v;            // lets the stylesheet show team-wide blocks on team tabs only
+    // photos and designs are heavy: they download the first time their tab opens
+    if (v === "photos" && window.ChamLive && window.ChamLive.wantPhotos) window.ChamLive.wantPhotos();
+    if (v === "merch" && window.ChamLive && window.ChamLive.wantMerch) window.ChamLive.wantMerch();
     // every page opens with its title and one line; the team-wide strip follows them on the team pages
     const glance = document.querySelector(".glance"), pageHint = $("view-" + v) && $("view-" + v).querySelector(":scope > p.hint");
     if (glance && pageHint && (v === "updates" || v === "tasks")) pageHint.after(glance);
@@ -3022,7 +3025,7 @@
       return;
     }
     if (!PHOTOS || !PHOTOS.length) {
-      grid.appendChild(el("div", { class: "empty-state", text: "No photos yet. Add the first one." }));
+      grid.appendChild(el("div", { class: "empty-state", text: PHOTOS ? "No photos yet. Add the first one." : "Loading the photos\u2026" }));
       return;
     }
 

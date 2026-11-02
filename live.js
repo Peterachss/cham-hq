@@ -32,7 +32,8 @@ if (!CONFIGURED) {
     sendPasswordResetEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential
   } = auth_;
   const {
-    getFirestore, collection, doc, getDoc, onSnapshot,
+    getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+    terminate, clearIndexedDbPersistence, collection, doc, getDoc, onSnapshot,
     addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, orderBy, limit, getDocs
   } = store_;
 
@@ -53,7 +54,17 @@ if (!CONFIGURED) {
 
   const app  = initializeApp(CFG);
   const auth = getAuth(app);
-  const db   = getFirestore(app);
+  /* Keep a saved copy of what this device has downloaded, so opening the
+     site again (or another tab) serves it from the device and only fetches
+     what changed. If the browser won't allow it (some private windows),
+     fall back to the plain in-memory setup. Signing out wipes the copy. */
+  let db;
+  try {
+    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  } catch (e) {
+    console.warn("Chạm HQ: no saved copy on this device", e);
+    db = getFirestore(app);
+  }
 
   const el = (tag, props, kids) => {
     const n = document.createElement(tag);
@@ -206,6 +217,53 @@ if (!CONFIGURED) {
     return "Could not sign in. " + c;
   }
 
+  /* ----- the heavy collections, on demand ----- */
+  let signedIn = false;
+  const want = { photos: false, merch: false };
+  function startPhotos() {
+    // Photos, stored small and inline in Firestore rather than in Storage,
+    // which this project would need a paid plan to switch on.
+    if (unsubPhotos || !signedIn) return;
+    unsubPhotos = onSnapshot(collection(db, "photos"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({
+            id: d.id, date: v.date || null, who: v.who || "team",
+            caption: v.caption || "", data: v.data || "", w: v.w || 0, h: v.h || 0
+          });
+        });
+        window.ChamHQ.setPhotos(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the photos", err);
+        window.ChamHQ.setPhotos(null);
+      });
+  }
+  function startMerch() {
+    // Merch designs: the drafts' pictures (inline, like photos) and the drawn
+    // concept ideas, which are just a name here - the drawing is in merch.js.
+    if (unsubMerch || !signedIn) return;
+    unsubMerch = onSnapshot(collection(db, "merch"),
+      (qs) => {
+        const rows = [];
+        qs.forEach((d) => {
+          const v = d.data();
+          rows.push({
+            id: d.id, kind: v.kind || "photo", group: v.group || "canva", title: v.title || "", caption: v.caption || "",
+            data: v.data || "", w: v.w || 0, h: v.h || 0, idea: v.idea || "", order: v.order || 0,
+            who: v.who || "team", createdBy: v.createdBy || ""
+          });
+        });
+        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(rows);
+      },
+      (err) => {
+        console.error("Chạm HQ: lost the merch designs", err);
+        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(null);
+      });
+  }
+
   /* ----- auth state ------------------------------------------------ */
   onAuthStateChanged(auth, async (user) => {
     if (unsubTasks) { unsubTasks(); unsubTasks = null; }
@@ -229,10 +287,14 @@ if (!CONFIGURED) {
     if (unsubPolls) { unsubPolls(); unsubPolls = null; }
     if (unsubVotes) { unsubVotes(); unsubVotes = null; }
     votesFor = "";
+    signedIn = false;
 
     if (!user) {
-      // Signing out wipes the page: reload, so nothing a member saw stays in memory.
-      if (wasIn) { location.reload(); return; }
+      // Signing out wipes the page and the device's saved copy, so nothing a member saw stays behind.
+      if (wasIn) {
+        try { await terminate(db); await clearIndexedDbPersistence(db); } catch (e) { console.warn("Chạm HQ: couldn't clear the saved copy", e); }
+        location.reload(); return;
+      }
       document.body.classList.add("locked");
       showSignedOut();
       return;
@@ -348,44 +410,11 @@ if (!CONFIGURED) {
         window.ChamHQ.setUpdates(null);
       });
 
-    // Photos, stored small and inline in Firestore rather than in Storage,
-    // which this project would need a paid plan to switch on.
-    unsubPhotos = onSnapshot(collection(db, "photos"),
-      (qs) => {
-        const rows = [];
-        qs.forEach((d) => {
-          const v = d.data();
-          rows.push({
-            id: d.id, date: v.date || null, who: v.who || "team",
-            caption: v.caption || "", data: v.data || "", w: v.w || 0, h: v.h || 0
-          });
-        });
-        window.ChamHQ.setPhotos(rows);
-      },
-      (err) => {
-        console.error("Chạm HQ: lost the photos", err);
-        window.ChamHQ.setPhotos(null);
-      });
-
-    // Merch designs: the drafts' pictures (inline, like photos) and the drawn
-    // concept ideas, which are just a name here - the drawing is in merch.js.
-    unsubMerch = onSnapshot(collection(db, "merch"),
-      (qs) => {
-        const rows = [];
-        qs.forEach((d) => {
-          const v = d.data();
-          rows.push({
-            id: d.id, kind: v.kind || "photo", group: v.group || "canva", title: v.title || "", caption: v.caption || "",
-            data: v.data || "", w: v.w || 0, h: v.h || 0, idea: v.idea || "", order: v.order || 0,
-            who: v.who || "team", createdBy: v.createdBy || ""
-          });
-        });
-        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(rows);
-      },
-      (err) => {
-        console.error("Chạm HQ: lost the merch designs", err);
-        if (window.ChamHQ.setMerch) window.ChamHQ.setMerch(null);
-      });
+    // Photos and merch designs are the heavy part (about 200 KB each), so they
+    // download only when someone opens their tab - see wantPhotos / wantMerch.
+    signedIn = true;
+    if (want.photos) startPhotos();
+    if (want.merch) startMerch();
 
     // Money in and out. Everyone can log; Thuan and the admins keep it tidy.
     unsubMoney = onSnapshot(collection(db, "expenses"),
@@ -662,6 +691,8 @@ if (!CONFIGURED) {
         createdAt: serverTimestamp()
       });
     },
+    wantPhotos() { want.photos = true; startPhotos(); },
+    wantMerch() { want.merch = true; startMerch(); },
     async deletePhoto(id) { await deleteDoc(doc(db, "photos", id)); },
     async addMerch(m) {
       const me = auth.currentUser.email.toLowerCase();
