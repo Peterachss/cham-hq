@@ -99,7 +99,9 @@
   function avatar(key, big) {
     const p = PEOPLE[key] || PEOPLE.team;
     const a = el("span", { class: "av" + (big ? " lg" : ""), title: p.name, "aria-hidden": "true", text: p.initials });
-    a.style.background = p.color;
+    // a person's colour is who they are, not data: a pale tint of it, with the initials in a dark shade of the same hue
+    a.style.background = "color-mix(in srgb, " + p.color + " 22%, #fff)";
+    a.style.color = "color-mix(in srgb, " + p.color + " 72%, #000)";
     return a;
   }
   /** renders **bold** spans without innerHTML */
@@ -429,7 +431,7 @@
       onclick: () => { dismissForAWeek(); bar.hidden = true; } });
 
     bar.className = "nb" + (nudgedBy ? " nb-nudged" : "");
-    if (nudgedBy) bar.append(el("div", { class: "nb-ask", text: "\ud83d\udc4b " + nudgedBy + " asked you to turn these on \u2014 it takes ten seconds." }));
+    if (nudgedBy) bar.append(el("div", { class: "nb-ask", text: nudgedBy + " asked you to turn these on \u2014 it takes ten seconds." }));
     if (pushState === "ios") {
       bar.append(el("div", { class: "nb-body" }, [
         el("b", { text: "Want notifications on your iPhone?" }),
@@ -481,7 +483,7 @@
    * state
    * ------------------------------------------------------------------ */
   const S = {
-    view: "updates",
+    view: "me",
     person: "all",
     status: "live",           // live = everything except done
     updPerson: "all",
@@ -506,8 +508,9 @@
   });
   function setView(v) {
     S.view = v;
+    document.body.dataset.view = v;            // lets the stylesheet show team-wide blocks on team tabs only
     if (location.hash.slice(1) !== v) {
-      try { history.replaceState(null, "", location.pathname + location.search + (v === "updates" ? "" : "#" + v)); } catch (e) {}
+      try { history.replaceState(null, "", location.pathname + location.search + (v === "me" ? "" : "#" + v)); } catch (e) {}
     }
     VIEWS.forEach((n) => {
       $("tab-"+n).setAttribute("aria-selected", String(n === v));
@@ -1069,7 +1072,7 @@
         b.disabled = true;
         try {
           await window.ChamLive.closePoll(p.id);
-          logActivity({ who: SESSION.personKey, ref: p.id, event: "pollclosed", text: "\ud83d\udcca Poll closed: **" + p.question + "** \u2192 " + pollResult(p) });
+          logActivity({ who: SESSION.personKey, ref: p.id, event: "pollclosed", text: "Poll closed: **" + p.question + "** \u2192 " + pollResult(p) });
         } catch (err) { b.disabled = false; toast("Didn\u2019t close. " + (err.code || err.message)); }
       } }) : null;
       const del = admin ? el("button", { class: "act ghost danger", type: "button", text: "Delete poll",
@@ -1082,7 +1085,6 @@
       } }) : null;
       return el("section", { class: "card poll" + (open ? "" : " closed") }, [
         el("div", { class: "poll-head" }, [
-          el("span", { class: "poll-ic", "aria-hidden": "true", text: "\ud83d\udcca" }),
           el("div", { class: "poll-id" }, [el("b", { class: "poll-q", text: p.question }),
             el("span", { class: "poll-sub", text: byName + " asks \u00b7 " + when })])
         ]),
@@ -1137,7 +1139,7 @@
         id = await window.ChamLive.createPoll({ question, options, by: me, byName: name,
           closesAt: closes.value ? new Date(closes.value + "T23:59:59+07:00") : null });
       } catch (err) { ask.disabled = false; return bad("Didn\u2019t save. " + (err.code || err.message)); }
-      logActivity({ who: me, ref: id, event: "poll", text: "\ud83d\udcca Asked everyone: **" + question + "**" });
+      logActivity({ who: me, ref: id, event: "poll", text: "Asked everyone: **" + question + "**" });
       try { await window.ChamLive.announcePoll(id, question, me, name); toast("Poll is up \u2014 phones buzz in a few seconds"); }
       catch (err) { toast("Poll is up, but the notification didn\u2019t go. " + (err.code || err.message)); }
       ask.disabled = false; reset();
@@ -1148,7 +1150,7 @@
     reset();
     box.append(
       el("div", { class: "an-head" }, [
-        el("span", { class: "an-ic", "aria-hidden": "true", text: "\ud83d\udcca" }),
+        null,
         el("div", {}, [el("h3", { class: "an-h", text: "Quick poll" }),
           el("p", { class: "an-sub", text: "Everyone gets a notification and votes in one tap at the top of Updates. Admins only." })])
       ]),
@@ -1170,7 +1172,7 @@
       const ev = (EVDB || []).find((x) => x.id === c.eventId);
       if (!ev) return { gone: "That event isn\u2019t on the countdown any more." };
       if (ev.date === c.date) return { gone: ev.name + " is already on " + pretty(c.date) + "." };
-      return { icon: "\ud83d\udcc5", parts: ["Move ", [ev.name], " from " + pretty(ev.date) + " to ", [pretty(c.date)]], ev };
+      return { icon: "", parts: ["Move ", [ev.name], " from " + pretty(ev.date) + " to ", [pretty(c.date)]], ev };
     }
     if (c.type === "task_status") {
       const t = TASKS.find((x) => x.id === c.taskId);
@@ -1178,12 +1180,12 @@
       const label = { done: "done", blocked: "stuck", doing: "in progress", open: "not started" }[c.status];
       if (!label) return { gone: "The chat asked for a status the site doesn\u2019t know." };
       if (t.status === c.status) return { gone: "\u201c" + t.title + "\u201d is already " + label + "." };
-      return { icon: c.status === "done" ? "\u2705" : c.status === "blocked" ? "\ud83d\udea7" : "\u25b6\ufe0f",
+      return { icon: "",
         parts: ["Mark " + nm(t.who) + "\u2019s job ", [t.title], " " + label], t };
     }
     if (c.type === "task_new") {
       if (!PEOPLE[c.who] || !c.title) return { gone: "The chat named somebody the site doesn\u2019t know." };
-      return { icon: "\u2795", parts: ["New job for " + nm(c.who) + ": ", [c.title], c.due ? ", due " + pretty(c.due) : ""] };
+      return { icon: "", parts: ["New job for " + nm(c.who) + ": ", [c.title], c.due ? ", due " + pretty(c.due) : ""] };
     }
     return { gone: "The site doesn\u2019t know how to do that one." };
   }
@@ -1195,7 +1197,7 @@
     if (c.type === "event_date") {
       await window.ChamLive.saveEvent(d.ev.id, { date: c.date });
       logActivity({ who: r.who, ref: "req-" + r.id, event: "request", key: true,
-        text: "\ud83d\udcc5 **" + d.ev.name + "** moved to " + pretty(c.date) + from });
+        text: "**" + d.ev.name + "** moved to " + pretty(c.date) + from });
     } else if (c.type === "task_status") {
       const t = d.t;
       await window.ChamLive.setStatus(t.id, c.status);
@@ -1244,7 +1246,7 @@
           el("div", { class: "req-said" }, [avatar(r.who), el("span", { class: "req-who", text: (PEOPLE[r.who] ? PEOPLE[r.who].name : r.who) + (r.date ? " \u00b7 " + pretty(r.date) : "") }),
             el("q", { class: "req-q", text: r.text })]),
           d.gone ? el("p", { class: "req-what", text: d.gone })
-            : el("p", { class: "req-what" }, [el("span", { "aria-hidden": "true", text: d.icon + " " })]
+            : el("p", { class: "req-what" }, []
                 .concat(d.parts.map((x) => (Array.isArray(x) ? el("b", { text: x[0] }) : document.createTextNode(x))))),
           el("div", { class: "sf-row" }, [apply, dismiss, msg])
         ]);
@@ -1283,9 +1285,9 @@
     } });
     const [icon, text, act] =
         o.status === "sent"    ? ["\u2713", "Group chat message for " + when + " sent", null]
-      : o.status === "sending" ? ["\ud83d\udce8", "Posting the group chat message for " + when + "\u2026", null]
-      : o.status === "failed"  ? ["\u26a0\ufe0f", "The group chat message for " + when + " didn\u2019t go" + (o.error ? ": " + o.error : ""), btn("Try again", "pending")]
-      : ["\ud83d\udce8", "Group chat message for " + when + " is waiting for the laptop with the Instagram bot", btn("Cancel", "cancelled", "Tap again to cancel")];
+      : o.status === "sending" ? ["", "Posting the group chat message for " + when + "\u2026", null]
+      : o.status === "failed"  ? ["!", "The group chat message for " + when + " didn\u2019t go" + (o.error ? ": " + o.error : ""), btn("Try again", "pending")]
+      : ["", "Group chat message for " + when + " is waiting for the laptop with the Instagram bot", btn("Cancel", "cancelled", "Tap again to cancel")];
     return el("div", { class: "gc-status " + o.status }, [el("span", { "aria-hidden": "true", text: icon }), el("span", { text }), act]);
   }
 
@@ -1329,7 +1331,7 @@
     });
     const msg = "Can everyone turn on notifications for Ch\u1ea1m HQ? Open peterachss.github.io/cham-hq, sign in, tap Turn on in the green bar. iPhone: Share \u2192 Add to Home Screen first, then open it from there.";
     box.replaceChildren(el("details", { open: wasOpen }, [
-      el("summary", {}, [el("b", { text: "\ud83d\udd14 " + onN + " of " + ppl.length + " get notifications" }),
+      el("summary", {}, [el("b", { text: onN + " of " + ppl.length + " get notifications" }),
         off.length ? el("span", { class: "wo-off", text: " \u00b7 off: " + off.join(", ") }) : null]),
       el("div", { class: "wo-list" }, rows),
       off.length ? el("div", { class: "sf-row" }, [
@@ -1395,7 +1397,7 @@
     if (Object.keys(seen).length) window.ChamLive.saveOnboarding(seen).catch(() => {});
     const done = steps.filter((x) => x.done).length;
     if (done === steps.length) {
-      if (!OB.finished) { window.ChamLive.saveOnboarding({ finished: true }).catch(() => {}); toast("All set up \ud83c\udf89"); }
+      if (!OB.finished) { window.ChamLive.saveOnboarding({ finished: true }).catch(() => {}); toast("All set up"); }
       return null;
     }
     const tick = (k) => window.ChamLive.saveOnboarding({ [k]: true }).catch((err) => toast("Didn\u2019t save. " + (err.code || err.message)));
@@ -1405,7 +1407,7 @@
       ["+ Log money", "the green button, on every tab"]];
     return el("section", { class: "welcome" }, [
       el("div", { class: "wl-head" }, [
-        el("b", { text: "\ud83d\udc4b Welcome to Ch\u1ea1m HQ \u2014 " + done + " of " + steps.length + " done" }),
+        el("b", { text: "Welcome to Ch\u1ea1m HQ \u2014 " + done + " of " + steps.length + " done" }),
         el("button", { class: "nb-link", type: "button", text: "Hide", onclick: () => tick("dismissed") })
       ]),
       el("div", { class: "wl-bar" }, [el("span", { style: "width:" + (done / steps.length * 100) + "%" })]),
@@ -1599,7 +1601,7 @@
     const bad = rows.filter((r) => r.state === "red").length;
     const wasOpen = box.querySelector("details") ? box.querySelector("details").open : bad > 0;
     box.replaceChildren(el("details", { open: wasOpen || bad > 0 }, [
-      el("summary", {}, [el("b", { text: bad ? "\u26a0\ufe0f " + bad + " background job" + (bad === 1 ? "" : "s") + " need" + (bad === 1 ? "s" : "") + " attention" : "\u2699\ufe0f Background jobs: all running" })]),
+      el("summary", {}, [el("b", { text: bad ? bad + " background job" + (bad === 1 ? "" : "s") + " need" + (bad === 1 ? "s" : "") + " attention" : "Background jobs: all running" })]),
       el("div", { class: "wo-list" }, rows.map((r) => el("div", { class: "sys-row" }, [
         el("span", { class: "sys-dot " + r.state, "aria-hidden": "true" }),
         el("div", {}, [el("b", { text: r.label }), el("span", { class: "sys-when", text: " \u00b7 " + r.when })]),
@@ -1654,7 +1656,7 @@
       welcomeCard(),
       el("div", { class: "me-head" }, [
         avatar(me, true),
-        el("div", { class: "me-id" }, [el("h2", { class: "sec", text: "Hi " + p.name + (officer ? " \ud83d\udc6e" : "") }),
+        el("div", { class: "me-id" }, [el("h2", { class: "sec", text: "Hi " + p.name }),
           el("span", { class: "an-sub", text: (p.role || "") + (SESSION.admin ? " \u00b7 admin" : "") })]),
         el("div", { class: "me-pts" }, [
           el("span", { class: "im-n", text: mine ? (mine.total > 0 ? "+" : "") + mine.total : "0" }),
@@ -1678,8 +1680,8 @@
       }))]) : null,
       nextMeets.length ? sec("Coming up", "", [el("ul", { class: "me-list" }, nextMeets.slice(0, 4).map((m) =>
         el("li", {}, [el("b", { text: m.title }), document.createTextNode(" \u00b7 " + relDay(m.date))])))]) : null,
-      sec("This device", "", [el("p", { class: "an-sub", text: pushState === "on" ? "\ud83d\udd14 Notifications are on here. Use \u201cSend me a test\u201d in the green bar at the top to check."
-        : "\ud83d\udd15 Notifications are off on this device \u2014 turn them on in the bar at the top so you hear about new jobs and nudges." })])
+      sec("This device", "", [el("p", { class: "an-sub", text: pushState === "on" ? "Notifications are on here. Use \u201cSend me a test\u201d in the green bar at the top to check."
+        : "Notifications are off on this device \u2014 turn them on in the bar at the top so you hear about new jobs and nudges." })])
     );
   }
 
@@ -1698,12 +1700,12 @@
     const onN = ppl.filter(([, p]) => p.devices.length).length;
     const sysBad = $("system") && /attention/.test($("system").textContent || "");
     const tools = [
-      ["post", "\u270d\ufe0f Post an update", avail("upd-admin"), ""],
-      ["requests", "\ud83d\udce5 From the chat", avail("chat-requests"), REQUESTS && REQUESTS.length ? REQUESTS.length + " request" + (REQUESTS.length === 1 ? "" : "s") : ""],
-      ["announce", "\ud83d\udce3 Announce", avail("announce"), ""],
-      ["poll", "\ud83d\udcca Poll", avail("poll-new"), ""],
-      ["notify", "\ud83d\udd14 Notifications", avail("whos-on"), ppl.length ? onN + "/" + ppl.length : ""],
-      ["system", sysBad ? "\u26a0\ufe0f Background jobs" : "\u2699\ufe0f Background jobs", avail("system"), sysBad ? "needs a look" : "ok"]
+      ["post", "Post an update", avail("upd-admin"), ""],
+      ["requests", "From the chat", avail("chat-requests"), REQUESTS && REQUESTS.length ? REQUESTS.length + " request" + (REQUESTS.length === 1 ? "" : "s") : ""],
+      ["announce", "Announce", avail("announce"), ""],
+      ["poll", "Poll", avail("poll-new"), ""],
+      ["notify", "Notifications", avail("whos-on"), ppl.length ? onN + "/" + ppl.length : ""],
+      ["system", "Background jobs", avail("system"), sysBad ? "needs a look" : "ok"]
     ].filter((t) => t[2]);
     if (TOOL_OPEN && !tools.some((t) => t[0] === TOOL_OPEN)) TOOL_OPEN = null;
     $("upd-tools").hidden = !tools.length;
@@ -1745,7 +1747,7 @@
           try {
             const me = SESSION.personKey;
             await window.ChamLive.announce(t, me, PEOPLE[me] ? PEOPLE[me].name : me);
-            logActivity({ who: me, event: "announce", key: true, text: "\ud83d\udce3 " + t });
+            logActivity({ who: me, event: "announce", key: true, text: t });
             text.value = ""; count.textContent = "0 / 300";
             msg.textContent = "Queued \u2014 phones buzz in a few seconds.";
           } catch (e) {
@@ -1756,7 +1758,7 @@
       text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send.click(); });
       box.append(
         el("div", { class: "an-head" }, [
-          el("span", { class: "an-ic", "aria-hidden": "true", text: "\ud83d\udce3" }),
+          null,
           el("div", {}, [el("h3", { class: "an-h", text: "Announce" }),
             el("p", { class: "an-sub", text: "Goes straight to the phone of everyone with notifications on. Admins only." })])
         ]),
@@ -1787,8 +1789,8 @@
       const missed = a.status === "sent" && !a.sentTo;
       list.appendChild(el("li", { class: "an-item" + (a.status === "sent" ? " sent" : "") + (missed ? " missed" : "") }, [
         el("span", { class: "an-who", text: (PEOPLE[a.by] ? PEOPLE[a.by].name : a.by)
-          + (nudge ? " \ud83d\udc49 nudged " + toName : "") + " \u00b7 " + when }),
-        el("span", { class: "an-t", text: (a.kind === "poll" ? "\ud83d\udcca " : "") + a.text }),
+          + (nudge ? " nudged " + toName : "") + " \u00b7 " + when }),
+        el("span", { class: "an-t", text: (a.kind === "poll" ? "Poll: " : "") + a.text }),
         el("span", { class: "an-state", text: (a.status === "sent" ? "\u2713 " : "") + state }),
         a.status === "sent" ? el("button", { class: "an-x", type: "button", "aria-label": "Hide this", title: "Hide this",
           text: "\u00d7", onclick: () => { anHide(a.id); renderAnnounce(); } }) : null
@@ -2317,7 +2319,7 @@
         const recent = Date.now() - (NUDGED[t.id] || 0) < 10 * 60 * 1000;
         row.appendChild(el("button", {
           class: "act nudge" + (recent ? " sent" : ""), type: "button", disabled: recent,
-          text: recent ? "Nudged \u2713" : "\ud83d\udc49 Nudge",
+          text: recent ? "Nudged \u2713" : "Nudge",
           title: "Buzz " + PEOPLE[t.who].name + "\u2019s phone about this job",
           onclick: async (e) => {
             const b = e.currentTarget;
@@ -2332,7 +2334,7 @@
               b.textContent = "Nudged \u2713"; b.classList.add("sent");
               toast("Nudge sent to " + name);
             } catch (err) {
-              b.disabled = false; b.textContent = "\ud83d\udc49 Nudge";
+              b.disabled = false; b.textContent = "Nudge";
               flash(row, "Couldn\u2019t nudge. " + (err.code || err.message));
             }
           }
@@ -2560,7 +2562,6 @@
 
     const who = (ks) => ks.map((k) => PEOPLE[k].name).join(" & ");
     const badge = el("div", { class: "officer" }, [
-      el("span", { class: "officer-ic", "aria-hidden": "true", text: "\ud83d\udc6e" }),
       el("div", { class: "officer-t" }, pt.officers.length
         ? [el("span", { class: "officer-k", text: "Officer of the week" }),
            el("span", { class: "officer-n", text: who(pt.officers) }),
@@ -2597,10 +2598,10 @@
                 r.onTime + " on time \u00b7 " + r.late + " late \u00b7 " + r.overdue + " past its date now"]);
       // ties share a medal: rank = how many different scores beat this one
       const rank = new Set(rows.map((x) => x[view]).filter((x) => x > v)).size;
-      const medal = view === "total" && v > 0 ? ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49"][rank] : null;
+      const medal = view === "total" && v > 0 ? ["1st", "2nd", "3rd"][rank] : null;
       plot.appendChild(el("div", { class: "hrow" }, [
         el("span", { class: "hname" }, [avatar(r.key), el("span", {
-          text: PEOPLE[r.key].name + (pt.officers.includes(r.key) ? " \ud83d\udc6e" : "") + (medal ? " " + medal : "") })]),
+          text: PEOPLE[r.key].name + (pt.officers.includes(r.key) ? " \u00b7 officer" : "") + (medal ? " \u00b7 " + medal : "") })]),
         el("div", { class: "htrack" }, [bar]),
         el("span", { class: "hval" + (v < 0 ? " bad" : ""), text: (v > 0 ? "+" : "") + v })
       ]));
@@ -3813,7 +3814,7 @@
     const rv = a.review;
     const wrap = el("details", { class: "rv" + (rv ? " done" : " due") }, [
       el("summary", { text: rv ? "Review by " + (PEOPLE[rv.by] ? PEOPLE[rv.by].name : rv.by) + (rv.at ? " \u00b7 " + pretty(rv.at) : "")
-                               : "\u270d Write the review (4 questions)" })
+                               : "Write the review (4 questions)" })
     ]);
     const Q = [["well", "What went well?"], ["bad", "What didn\u2019t?"], ["next", "What should we change next time?"],
                ["numbers", "Any numbers? (sold, reached, left over)"]];
@@ -3902,7 +3903,7 @@
       STAGES_SP.map(([k, l]) => el("option", { value: k, text: l, selected: k === x.stage })));
     stage.addEventListener("change", () => {
       save({ stage: stage.value });
-      if (stage.value === "agreed") logActivity({ who: SESSION.personKey, event: "sponsor", key: true, text: "\ud83e\udd1d **" + x.name + "** agreed to support Ch\u1ea1m" });
+      if (stage.value === "agreed") logActivity({ who: SESSION.personKey, event: "sponsor", key: true, text: "**" + x.name + "** agreed to support Ch\u1ea1m" });
     });
     const next = el("input", { class: "ad-in", type: "date", value: x.next || "", "aria-label": "Follow up on" });
     next.addEventListener("change", () => save({ next: next.value || null }));
@@ -4136,7 +4137,7 @@
         onclick: () => { const f = $("sale-form"); f.hidden = !f.hidden; if (!f.hidden) f.querySelector("input").focus(); } }) : null;
       box.append(
         el("div", { class: "sl-headrow" }, [
-          el("div", {}, [el("h3", { class: "an-h", text: "\ud83e\uddfe Pre-orders" }),
+          el("div", {}, [el("h3", { class: "an-h", text: "Pre-orders" }),
             el("p", { class: "an-sub", text: "Share a sale\u2019s order link; orders land here live. Tick them paid and picked up at the stall." })]),
           toggle
         ]),
@@ -4729,7 +4730,7 @@
 
   const fromLink = location.hash.slice(1);
   if (fromLink === "log") { setView("money"); pendingLog = true; openMoneySheet(); }
-  else setView(VIEWS.includes(fromLink) ? fromLink : "updates");
+  else setView(VIEWS.includes(fromLink) ? fromLink : "me");   // home: your own jobs first
   window.addEventListener("hashchange", () => {
     const h = location.hash.slice(1);
     if (h === "log") { setView("money"); openMoneySheet(); return; }

@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Chạm HQ · Members</title>
 <meta name="description" content="Chạm updates, calendar and tasks for members." />
-<link rel="stylesheet" href="styles.css?v=71" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@600&amp;display=swap" />
+<link rel="stylesheet" href="styles.css?v=72" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -13,8 +17,7 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Chạm HQ" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f5f1" />
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1613" />
+<meta name="theme-color" content="#f4f6f3" />
 <meta name="robots" content="noindex, nofollow" />
 </head>
 <body class="locked auth-pending">
@@ -40,8 +43,8 @@
       <div class="q-results" id="q-results" hidden></div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab" role="tab" id="tab-me" aria-controls="view-me" aria-selected="false" data-view="me">Me <span class="n" id="n-me"></span></button>
-      <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="true" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
+      <button class="tab" role="tab" id="tab-me" aria-controls="view-me" aria-selected="true" data-view="me">Home <span class="n" id="n-me"></span></button>
+      <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="false" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
       <button class="tab" role="tab" id="tab-money" aria-controls="view-money" aria-selected="false" data-view="money">Money <span class="n" id="n-money"></span></button>
@@ -62,7 +65,6 @@
       <p>You stay signed in on this device &mdash; this only takes a moment.</p>
     </div>
     <div class="gate-locked">
-      <span class="gate-ic" aria-hidden="true">🔒</span>
       <h2>Members only</h2>
       <p>This is the Chạm team&rsquo;s workspace. Sign in above with your Chạm account &mdash; you&rsquo;ll stay signed in on this device.</p>
     </div>
@@ -223,7 +225,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=71" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=72" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -244,9 +246,9 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=71"></script>
-<script src="merch.js?v=71"></script>
-<script src="app.js?v=71"></script>
-<script type="module" src="live.js?v=71"></script>
+<script src="firebase-config.js?v=72"></script>
+<script src="merch.js?v=72"></script>
+<script src="app.js?v=72"></script>
+<script type="module" src="live.js?v=72"></script>
 </body>
 </html>
