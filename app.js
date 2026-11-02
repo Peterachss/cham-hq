@@ -100,8 +100,8 @@
     const p = PEOPLE[key] || PEOPLE.team;
     const a = el("span", { class: "av" + (big ? " lg" : ""), title: p.name, "aria-hidden": "true", text: p.initials });
     // a person's colour is who they are, not data: a pale tint of it, with the initials in a dark shade of the same hue
-    a.style.background = "color-mix(in srgb, " + p.color + " 22%, #fff)";
-    a.style.color = "color-mix(in srgb, " + p.color + " 72%, #000)";
+    a.style.background = "color-mix(in srgb, " + p.color + " 34%, #101a16)";
+    a.style.color = "color-mix(in srgb, " + p.color + " 45%, #fff)";
     return a;
   }
   /** renders **bold** spans without innerHTML */
@@ -496,7 +496,7 @@
     selected: TODAY
   };
 
-  const VIEWS = ["me","updates","calendar","tasks","money","photos","merch","tracker","sponsors"];
+  const VIEWS = ["me","updates","calendar","tasks","money","sponsors","merch","tracker","photos"];   // the menu's order
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
     btn.addEventListener("keydown", (e) => {
@@ -509,6 +509,9 @@
   function setView(v) {
     S.view = v;
     document.body.dataset.view = v;            // lets the stylesheet show team-wide blocks on team tabs only
+    // every page opens with its title and one line; the team-wide strip follows them on the team pages
+    const glance = document.querySelector(".glance"), pageHint = $("view-" + v) && $("view-" + v).querySelector(":scope > p.hint");
+    if (glance && pageHint && (v === "updates" || v === "tasks")) pageHint.after(glance);
     if (location.hash.slice(1) !== v) {
       try { history.replaceState(null, "", location.pathname + location.search + (v === "me" ? "" : "#" + v)); } catch (e) {}
     }

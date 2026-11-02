@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@600&amp;display=swap" />
-<link rel="stylesheet" href="styles.css?v=72" />
+<link rel="stylesheet" href="styles.css?v=73" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -17,7 +17,7 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Chạm HQ" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="theme-color" content="#f4f6f3" />
+<meta name="theme-color" content="#0b1310" />
 <meta name="robots" content="noindex, nofollow" />
 </head>
 <body class="locked auth-pending">
@@ -45,13 +45,16 @@
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-me" aria-controls="view-me" aria-selected="true" data-view="me">Home <span class="n" id="n-me"></span></button>
       <button class="tab" role="tab" id="tab-updates" aria-controls="view-updates" aria-selected="false" data-view="updates">Updates <span class="n" id="n-updates"></span></button>
+      <span class="nav-group" role="presentation">Planning</span>
       <button class="tab" role="tab" id="tab-calendar" aria-controls="view-calendar" aria-selected="false" data-view="calendar">Calendar <span class="n" id="n-calendar"></span></button>
       <button class="tab" role="tab" id="tab-tasks" aria-controls="view-tasks" aria-selected="false" data-view="tasks">Tasks <span class="n" id="n-tasks"></span></button>
+      <span class="nav-group" role="presentation">Fundraising</span>
       <button class="tab" role="tab" id="tab-money" aria-controls="view-money" aria-selected="false" data-view="money">Money <span class="n" id="n-money"></span></button>
-      <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
-      <button class="tab" role="tab" id="tab-merch" aria-controls="view-merch" aria-selected="false" data-view="merch">Merch <span class="n" id="n-merch"></span></button>
-      <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
       <button class="tab" role="tab" id="tab-sponsors" aria-controls="view-sponsors" aria-selected="false" data-view="sponsors">Sponsors <span class="n" id="n-sponsors"></span></button>
+      <button class="tab" role="tab" id="tab-merch" aria-controls="view-merch" aria-selected="false" data-view="merch">Merch <span class="n" id="n-merch"></span></button>
+      <span class="nav-group" role="presentation">Team</span>
+      <button class="tab" role="tab" id="tab-tracker" aria-controls="view-tracker" aria-selected="false" data-view="tracker">Tracker <span class="n" id="n-tracker"></span></button>
+      <button class="tab" role="tab" id="tab-photos" aria-controls="view-photos" aria-selected="false" data-view="photos">Photos <span class="n" id="n-photos"></span></button>
     </nav>
   </div>
 </header>
@@ -81,6 +84,8 @@
   </section>
 
   <section id="view-updates" role="tabpanel" aria-labelledby="tab-updates" tabindex="0">
+    <h2 class="sec">Updates</h2>
+    <p class="hint">What the team has done and said, newest first, with polls and anything waiting for an admin.</p>
     <div id="polls" class="polls"></div>
     <div id="countdown" class="countdown" hidden></div>
     <div id="chat-drafts"></div>
@@ -139,9 +144,9 @@
   </section>
 
   <section id="view-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0" hidden>
-    <h2 class="sec">Who is doing what</h2>
+    <h2 class="sec">Tasks</h2>
+    <p class="hint">Every job someone was given or took on, and where it stands. Tap a name to see only theirs.</p>
     <div id="admin-panel" class="admin" hidden></div>
-    <p class="hint">Every job someone was given or took on in the chat, and where it stands as of Fri 25 Sep. Tap a name to see only theirs.</p>
     <div class="filters" id="task-filters"></div>
     <div class="filters" id="status-filters"></div>
     <div id="board"></div>
@@ -177,7 +182,7 @@
   </section>
 
   <section id="view-tracker" role="tabpanel" aria-labelledby="tab-tracker" tabindex="0" hidden>
-    <h2 class="sec">How everyone is doing</h2>
+    <h2 class="sec">Tracker</h2>
     <p class="hint">Everything finished, everything still open, and how far past its date. Everyone signed in sees the same numbers. Jobs with no due date can never be late, so they only count towards the open total.</p>
     <div id="impact" class="impact" hidden></div>
     <div class="teamline" id="team-line"></div>
@@ -225,7 +230,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=72" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=73" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -246,9 +251,9 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=72"></script>
-<script src="merch.js?v=72"></script>
-<script src="app.js?v=72"></script>
-<script type="module" src="live.js?v=72"></script>
+<script src="firebase-config.js?v=73"></script>
+<script src="merch.js?v=73"></script>
+<script src="app.js?v=73"></script>
+<script type="module" src="live.js?v=73"></script>
 </body>
 </html>

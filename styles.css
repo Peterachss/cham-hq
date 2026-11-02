@@ -1,32 +1,32 @@
 :root {
-    /* The Chạm workroom: a sage frame, a white sheet for the work, ink type,
-       and the teal only on data and the one action that matters. */
-    --paper: #f4f6f3;      /* the frame: the menu and the page ground */
-    --sheet: #ffffff;      /* where the work sits */
-    --card: #ffffff;
-    --card-2: #f6f7f5;     /* a tonal panel, one step off white */
-    --line: #e3e7e1;       /* panel edges: a whisper */
-    --line-soft: #eef1ec;  /* row rules */
-    --control: #cdd4cb;    /* control borders, one step stronger */
-    --active: #e7ebe5;     /* the open menu item */
-    --ink: #202822;
-    --ink-2: #3a433d;
-    --muted: #59625c;      /* 5.6:1 on the frame, 6.3:1 on white */
-    --jade: #1b6e66;
-    --jade-soft: #e2eeeb;
-    --on-accent: #ffffff;
-    --marigold: #85530a;
-    --marigold-soft: #fbf1dc;
-    --clay: #b42318;
-    --clay-soft: #fdecea;
-    --slate-soft: #eef0ec;
-    --shadow: none;        /* panels sit flat on the sheet */
-    --float: 0 10px 28px rgba(32, 40, 34, .12), 0 1px 3px rgba(32, 40, 34, .08);  /* only what really floats */
+    /* Chạm HQ, always dark green: a deep green-black frame for the menu,
+       a slightly lighter sheet for the work, and jade on data and actions. */
+    --paper: #0b1310;      /* the frame: menu and page ground */
+    --sheet: #101a16;      /* where the work sits */
+    --card: #142019;       /* a panel on the sheet */
+    --card-2: #17251f;     /* a tonal panel, one step up */
+    --line: #23322c;       /* panel edges: a whisper on the dark */
+    --line-soft: #1c2924;  /* row rules */
+    --control: #34463f;    /* control borders, one step stronger */
+    --active: #1d2c26;     /* the open menu item */
+    --ink: #e8eee9;
+    --ink-2: #c4cec8;
+    --muted: #93a39c;      /* 6.8:1 on the sheet */
+    --jade: #4bb096;
+    --jade-soft: #15332b;
+    --on-accent: #06110d;
+    --marigold: #e3ad52;
+    --marigold-soft: #33290f;
+    --clay: #ee6b72;       /* late and overdue only: a clear red, 5.1:1 on the panels */
+    --clay-soft: #3a1c20;
+    --slate-soft: #1c2924;
+    --shadow: none;
+    --float: 0 12px 32px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .35);  /* only what really floats */
     --radius: 14px;
-    --brand: "Lora", "Palatino Linotype", Palatino, Georgia, serif;  /* the wordmark only */  /* the wordmark only */
+    --brand: "Lora", "Palatino Linotype", Palatino, Georgia, serif;  /* the wordmark only */
     --sans: "Be Vietnam Pro", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     --serif: var(--sans);
-    color-scheme: light;
+    color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
@@ -297,10 +297,10 @@
    * ------------------------------------------------------------------ */
   .viz {
     --viz-surface: var(--card);
-    --viz-rest:  #a8cdc6;
-    --viz-doing: #4c938a;
-    --viz-done:  #1b6e66;
-    --viz-late:  #b42318;
+    --viz-rest:  #2c5a4f;
+    --viz-doing: #3f8f7c;
+    --viz-done:  #6fc7ae;
+    --viz-late:  #ee6b72;
     --viz-grid:  var(--line-soft);
 
     background: var(--card); border: 1px solid var(--line);
@@ -814,8 +814,8 @@
   .fab-judy { position: absolute; left: 5px; bottom: 4px; width: 66px; height: 82px; pointer-events: none; }
   .fab-judy::before {                      /* the badge she stands in */
     content: ""; position: absolute; left: 13px; bottom: 0; width: 46px; height: 46px; border-radius: 50%;
-    background: #145a53;
-    box-shadow: 0 0 0 2px var(--on-accent);
+    background: #0f3d33;
+    box-shadow: 0 0 0 2px var(--ink);
   }
   .fab-judy img {
     position: relative; display: block; width: 66px; height: 82px;
@@ -823,7 +823,7 @@
     transform-origin: 50% 100%;
     transition: transform .22s cubic-bezier(.22, 1, .36, 1);
   }
-  .fab:hover { background: #175f58; transform: translateY(-1px); }
+  .fab:hover { background: #5cc0a6; transform: translateY(-1px); }
   .fab:hover .fab-judy img { transform: translateY(-3px) rotate(-4deg); }
   .fab:active { transform: scale(.97); }
   .fab:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
@@ -1563,3 +1563,20 @@ body:not([data-view="updates"]):not([data-view="tasks"]) .glance { display: none
 #notify-bar:not([hidden]) { display: block; margin-bottom: 28px; }
 #notify-bar .nb { margin-top: 0; }
 .viz-none { background: none; border: 1px dashed var(--line); color: var(--muted); }
+
+/* ------------------------------------------------------------------ *
+ * Organised like the big workspace apps (Apple's sidebar guidance,
+ * Linear, Notion): your own things first, then short labelled groups,
+ * utilities at the foot; every page opens with its title and one line.
+ * ------------------------------------------------------------------ */
+.nav-group { display: none; }                      /* the phone's top bar keeps the order, without labels */
+section[role="tabpanel"] > h2.sec:first-child { font-size: 24px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 4px; }
+section[role="tabpanel"] > h2.sec:first-child + p.hint { font-size: 14px; margin: 0 0 24px; max-width: 64ch; }
+/* the notifications ask is personal: it lives on Home, not on top of every page */
+body:not([data-view="me"]) #notify-bar { display: none !important; }
+@media (min-width: 1100px) {
+  body:not(.locked) .nav-group {
+    display: block; padding: 18px 10px 6px; font-size: 12px; font-weight: 500; color: var(--muted);
+  }
+  body:not(.locked) > .wrap { padding-top: 36px; }
+}
