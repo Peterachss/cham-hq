@@ -1589,3 +1589,16 @@ body:not([data-view="me"]) #notify-bar { display: none !important; }
 .sub-b[aria-selected="true"] { background: var(--active); color: var(--ink); font-weight: 600; }
 .sub-b:focus-visible { outline: 2px solid var(--jade); outline-offset: 1px; }
 .subview > :first-child { margin-top: 0; }
+
+/* Tasks: one row of tools above the list, the way Linear's issue list does it */
+.task-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 18px; }
+.task-bar .subnav { margin: 0; }
+.task-who .ad-in { min-width: 190px; height: 38px; }
+.task-new { margin-left: auto; height: 38px; }
+.task-new.open { background: var(--card-2); color: var(--ink); border: 1px solid var(--line); }
+#admin-panel .adrow { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+#admin-panel .adrow .ad-in.wide { flex: 1 1 260px; min-width: 0; }
+@media (max-width: 560px) {
+  .task-who, .task-who .ad-in { flex: 1 1 100%; width: 100%; }
+  .task-new { margin-left: 0; }
+}

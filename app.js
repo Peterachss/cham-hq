@@ -2218,24 +2218,22 @@
   function renderTasks() {
     const pbox = $("task-filters");
     if (!pbox.childElementCount) {
-      const order = ["all"].concat([...new Set(TASKS.map((t) => t.who))]);
-      order.forEach((k) => {
+      const order = ["all"].concat([...new Set(TASKS.map((t) => t.who))].filter((k) => PEOPLE[k])
+        .sort((a, b) => PEOPLE[a].name.localeCompare(PEOPLE[b].name)));
+      const pick = el("select", { class: "ad-in", "aria-label": "Whose jobs" }, order.map((k) => {
         const count = k === "all" ? liveTasks().length : TASKS.filter((t) => t.who === k && t.status !== "done").length;
-        pbox.appendChild(el("button", {
-          class: "chipbtn" + (k === "all" ? " plain" : ""),
-          "aria-pressed": String(S.person === k), "data-k": k,
-          onclick: () => { S.person = k; syncPressed(pbox, k); renderTasks(); }
-        }, k === "all"
-          ? [document.createTextNode("Everyone"), el("span", { class: "c", text: String(count) })]
-          : [avatar(k), el("span", { text: PEOPLE[k].name }), el("span", { class: "c", text: String(count) })]));
-      });
+        return el("option", { value: k, text: (k === "all" ? "Everyone" : PEOPLE[k].name) + " \u00b7 " + count + " open" });
+      }));
+      pick.value = order.includes(S.person) ? S.person : "all";
+      pick.addEventListener("change", () => { S.person = pick.value; renderTasks(); });
+      pbox.appendChild(pick);
 
       const sbox = $("status-filters");
       [["live","Still open"],["all","Everything"],["done","Finished"]].forEach(([k, label]) => {
         sbox.appendChild(el("button", {
-          class: "chipbtn plain", "aria-pressed": String(S.status === k), "data-k": k,
+          class: "sub-b", type: "button", role: "tab", "aria-selected": String(S.status === k), "data-k": k,
           text: label,
-          onclick: () => { S.status = k; syncPressed(sbox, k); renderTasks(); }
+          onclick: () => { S.status = k; sbox.querySelectorAll(".sub-b").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.k === k))); renderTasks(); }
         }));
       });
     }
@@ -2503,7 +2501,14 @@
     const box = $("admin-panel");
     if (!box) return;
     const on = Boolean(SESSION && SESSION.admin && window.ChamLive);
-    box.hidden = !on;
+    const btn = $("new-job-btn");
+    if (btn) {
+      btn.hidden = !on;
+      btn.onclick = () => { S.newJob = !S.newJob; renderAdmin(); if (S.newJob) { const f = box.querySelector("input[type=text]"); if (f) f.focus(); } };
+      btn.textContent = S.newJob ? "Close" : "+ New job";
+      btn.classList.toggle("open", Boolean(S.newJob));
+    }
+    box.hidden = !on || !S.newJob;                 // the form opens from the New job button
     if (!on) { box.replaceChildren(); return; }
     if (box.childElementCount) return;
 
@@ -2541,8 +2546,10 @@
     });
 
     box.append(
-      el("h3", { class: "grp", text: "Hand out a job" }),
-      el("div", { class: "adrow" }, [who, title, due, note, go, msg])
+      el("h3", { class: "grp", text: "New job" }),
+      el("div", { class: "adrow" }, [who, title]),
+      el("div", { class: "adrow" }, [due, note]),
+      el("div", { class: "adrow" }, [go, msg])
     );
   }
 
