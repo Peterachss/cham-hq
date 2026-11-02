@@ -2322,20 +2322,29 @@
 
     MOVES.forEach(([k, label]) => {
       row.appendChild(el("button", {
-        class: "act" + (t.status === k ? " on" : ""),
+        class: "act act-move" + (t.status === k ? " on" : ""),
         "aria-pressed": String(t.status === k),
         text: label,
         onclick: async (e) => {
           const b = e.currentTarget;
-          if (t.status === k) return;
-          b.disabled = true;
+          if (b.classList.contains("on")) return;
+          /* Show the choice at once rather than greying the button until the
+             database answers: a slow or dropped connection used to leave the
+             buttons dead with no word of why. */
+          const moves = [...row.querySelectorAll(".act-move")];
+          const was = moves.find((x) => x.classList.contains("on"));
+          const press = (on) => moves.forEach((x) => { x.classList.toggle("on", x === on); x.setAttribute("aria-pressed", String(x === on)); });
+          press(b);
+          const slow = setTimeout(() => flash(row, "Still saving \u2014 check your internet connection."), 8000);
           try {
             await window.ChamLive.setStatus(t.id, k);
+            const old = row.querySelector(".act-err"); if (old) old.remove();
             if (k === "done") logActivity({ who: t.who, ref: t.id, event: "done", text: "Finished **" + t.title + "**" });
             if (k === "blocked") logActivity({ who: t.who, ref: t.id, event: "stuck",
               text: "Stuck on **" + t.title + "**" + (t.note ? " \u2014 " + t.note : "") });
           }
-          catch (err) { b.disabled = false; flash(row, "Did not save. " + (err.code || err.message)); }
+          catch (err) { press(was); flash(row, "Did not save. " + (err.code || err.message)); }
+          finally { clearTimeout(slow); }
         }
       }));
     });
