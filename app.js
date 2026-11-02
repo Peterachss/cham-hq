@@ -2222,7 +2222,10 @@
         .sort((a, b) => PEOPLE[a].name.localeCompare(PEOPLE[b].name)));
       const pick = el("select", { class: "ad-in", "aria-label": "Whose jobs" }, order.map((k) => {
         const count = k === "all" ? liveTasks().length : TASKS.filter((t) => t.who === k && t.status !== "done").length;
-        return el("option", { value: k, text: (k === "all" ? "Everyone" : PEOPLE[k].name) + " \u00b7 " + count + " open" });
+        // a dot in the person's own colour (shown only where the open list can be styled)
+        const dot = el("span", { class: "opt-dot", "aria-hidden": "true" });
+        dot.style.background = k === "all" ? "var(--muted)" : PEOPLE[k].color;
+        return el("option", { value: k }, [dot, document.createTextNode((k === "all" ? "Everyone" : PEOPLE[k].name) + " \u00b7 " + count + " open")]);
       }));
       pick.value = order.includes(S.person) ? S.person : "all";
       pick.addEventListener("change", () => { S.person = pick.value; renderTasks(); });
