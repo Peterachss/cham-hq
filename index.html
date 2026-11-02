@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@600&amp;display=swap" />
-<link rel="stylesheet" href="styles.css?v=73" />
+<link rel="stylesheet" href="styles.css?v=74" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
@@ -154,15 +154,22 @@
 
   <section id="view-money" role="tabpanel" aria-labelledby="tab-money" tabindex="0" hidden>
     <h2 class="sec">Money</h2>
-    <p class="hint">Every bit of money in and out, logged by whoever spent or took it. Thuan copies it into the finance sheet from here, so log it the day it happens and nobody has to chase receipts at the end of the month. Only signed-in members can see this.</p>
-    <div id="sales" class="sales" hidden></div>
-    <div id="money-goal"></div>
-    <div class="teamline" id="money-tiles"></div>
-    <div id="money-cta"></div>
-    <div id="money-tools"></div>
-    <div class="filters" id="money-filters"></div>
-    <div id="money-chart"></div>
-    <div id="money-list"></div>
+    <p class="hint">Money in and out, logged the day it happens. Thuan copies it into the finance sheet from here.</p>
+    <div class="subnav" data-for="money" role="tablist" aria-label="Parts of Money"></div>
+    <div class="subview" data-sub="overview">
+      <div id="money-goal"></div>
+      <div class="teamline" id="money-tiles"></div>
+      <div id="money-chart"></div>
+    </div>
+    <div class="subview" data-sub="log">
+      <div id="money-cta"></div>
+      <div id="money-tools"></div>
+      <div class="filters" id="money-filters"></div>
+      <div id="money-list"></div>
+    </div>
+    <div class="subview" data-sub="orders">
+      <div id="sales" class="sales" hidden></div>
+    </div>
   </section>
 
   <section id="view-photos" role="tabpanel" aria-labelledby="tab-photos" tabindex="0" hidden>
@@ -183,12 +190,19 @@
 
   <section id="view-tracker" role="tabpanel" aria-labelledby="tab-tracker" tabindex="0" hidden>
     <h2 class="sec">Tracker</h2>
-    <p class="hint">Everything finished, everything still open, and how far past its date. Everyone signed in sees the same numbers. Jobs with no due date can never be late, so they only count towards the open total.</p>
-    <div id="impact" class="impact" hidden></div>
-    <div class="teamline" id="team-line"></div>
-    <div id="points"></div>
-    <div class="filters" id="track-sort"></div>
-    <div id="tracker"></div>
+    <p class="hint">How the team is doing: what’s finished, what’s open and what’s late. Everyone signed in sees the same numbers.</p>
+    <div class="subnav" data-for="tracker" role="tablist" aria-label="Parts of Tracker"></div>
+    <div class="subview" data-sub="team">
+      <div class="teamline" id="team-line"></div>
+      <div class="filters" id="track-sort"></div>
+      <div id="tracker"></div>
+    </div>
+    <div class="subview" data-sub="points">
+      <div id="points"></div>
+    </div>
+    <div class="subview" data-sub="activities">
+      <div id="impact" class="impact" hidden></div>
+    </div>
   </section>
 
   <section id="view-me" role="tabpanel" aria-labelledby="tab-me" tabindex="0" hidden>
@@ -230,7 +244,7 @@
   <div id="money-add" class="admin"></div>
 </dialog>
 <button class="fab" id="log-fab" type="button" hidden>
-  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=73" alt="" width="66" height="82" decoding="async"></span>
+  <span class="fab-judy" aria-hidden="true"><img src="judy-bust.webp?v=74" alt="" width="66" height="82" decoding="async"></span>
   <span class="fab-label"><span class="fab-plus" aria-hidden="true">+</span>Log money</span>
 </button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -251,9 +265,9 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=73"></script>
-<script src="merch.js?v=73"></script>
-<script src="app.js?v=73"></script>
-<script type="module" src="live.js?v=73"></script>
+<script src="firebase-config.js?v=74"></script>
+<script src="merch.js?v=74"></script>
+<script src="app.js?v=74"></script>
+<script type="module" src="live.js?v=74"></script>
 </body>
 </html>

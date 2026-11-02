@@ -539,6 +539,35 @@
     requestAnimationFrame(go);
     setTimeout(go, 250);
   }
+  /* ------------------------------------------------------------------ *
+   * parts of a page: Money and Tracker show one part at a time, picked
+   * from a switcher under the title. A part with nothing in it hides its
+   * button; the choice is remembered on this device.
+   * ------------------------------------------------------------------ */
+  const SUBVIEWS = {
+    money: [["overview", "Overview"], ["log", "Transactions"], ["orders", "Pre-orders"]],
+    tracker: [["team", "Team"], ["points", "Points"], ["activities", "Activities"]]
+  };
+  const SUB = (() => { try { return JSON.parse(localStorage.getItem("cham-sub") || "{}"); } catch (e) { return {}; } })();
+  const subHasContent = (part) => [...part.children].some((c) => !c.hidden && (c.childElementCount || c.textContent.trim()));
+  function showSub(view, key) {
+    SUB[view] = key;
+    try { localStorage.setItem("cham-sub", JSON.stringify(SUB)); } catch (e) {}
+    renderSubnav(view);
+  }
+  function renderSubnav(view) {
+    const nav = document.querySelector('.subnav[data-for="' + view + '"]');
+    if (!nav) return;
+    const parts = [...document.querySelectorAll("#view-" + view + " > .subview")];
+    const live = SUBVIEWS[view].filter(([k]) => { const p = parts.find((x) => x.dataset.sub === k); return p && subHasContent(p); });
+    const cur = live.some(([k]) => k === SUB[view]) ? SUB[view] : (live[0] || SUBVIEWS[view][0])[0];
+    nav.hidden = live.length < 2;
+    nav.replaceChildren(...live.map(([k, label]) => el("button", {
+      class: "sub-b", type: "button", role: "tab", "aria-selected": String(k === cur), text: label,
+      onclick: () => showSub(view, k) })));
+    parts.forEach((p) => { p.hidden = p.dataset.sub !== cur; });
+  }
+
   function renderNow() {
     renderQueued = false;
     renderGlance();
@@ -553,6 +582,7 @@
     if (S.view === "photos") renderPhotos();
     if (S.view === "merch") renderMerch();
     if (S.view === "tracker") { renderImpact(); renderTracker(); }
+    if (SUBVIEWS[S.view]) renderSubnav(S.view);
     renderAdmin();
   }
 
@@ -4655,6 +4685,8 @@
     let n = find();
     if (!n) { renderNow(); n = find(); }
     if (!n) { toast("Couldn\u2019t find that on the page \u2014 it may have just changed"); return; }
+    const part = n.closest(".subview");
+    if (part && part.hidden) showSub(part.closest("section").id.replace("view-", ""), part.dataset.sub);
     for (let d = n.closest("details"); d; d = d.parentElement ? d.parentElement.closest("details") : null) d.open = true;
     const still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
     n.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });

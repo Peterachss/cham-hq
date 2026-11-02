@@ -1580,3 +1580,12 @@ body:not([data-view="me"]) #notify-bar { display: none !important; }
   }
   body:not(.locked) > .wrap { padding-top: 36px; }
 }
+
+/* parts of a page: a segmented switcher under the title, as wide as its options */
+.subnav { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 22px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.subnav[hidden] { display: none; }
+.sub-b { appearance: none; border: 0; background: none; font: inherit; font-size: 14px; color: var(--muted); padding: 7px 14px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.sub-b:hover { color: var(--ink); }
+.sub-b[aria-selected="true"] { background: var(--active); color: var(--ink); font-weight: 600; }
+.sub-b:focus-visible { outline: 2px solid var(--jade); outline-offset: 1px; }
+.subview > :first-child { margin-top: 0; }
