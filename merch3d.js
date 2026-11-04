@@ -1,203 +1,77 @@
 /* Chạm HQ - the Merch tab's 3D view of the CHẠM handprint set.
 
    One hoodie and one T-shirt you can drag round, in each of the six
-   colourways. Nothing here is a downloaded 3D model: the garment outline
-   from merch.js is drawn flat with the print on it, then "inflated" like a
-   cushion - each point is pushed out by how far it is from the edge - and
-   the flat drawing is wrapped onto the front and back. three.js is fetched
-   from a CDN the first time the section scrolls into view, the same way
-   live.js fetches Firebase. */
+   colourways from the handprint sheet. Every detail of the real shirts -
+   the ISHCMC crest, the flower or smiling sun, the five baby outfits on the
+   clothesline, the sleeve ribbons and Vietnam flag, and the painted
+   handprints, bee and CHAM lettering on the back - is packed into
+   merch3d.webp and wrapped onto a contour-snapped, sculpted 3D garment mesh.
+   three.js is fetched from a CDN the first time the section scrolls into
+   view, the same way live.js fetches Firebase. */
 (function () {
   "use strict";
 
   const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js";
-  let threeP = null;
+  const ATLAS_URL = "merch3d.webp?v=84";
+  let threeP = null, atlasP = null;
   const loadThree = () => threeP || (threeP = import(THREE_URL));
+  const loadAtlas = () => atlasP || (atlasP = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not load the 3D textures"));
+    img.src = ATLAS_URL;
+  }));
 
   const COL = {
-    cream: ["Cream / off-white", "#efe9da"], white: ["White", "#f7f6f2"], navy: ["Navy", "#232e4a"],
-    forest: ["Forest green", "#2f4b36"], pink: ["Pink", "#f0c4ce"], charcoal: ["Charcoal / black", "#29292c"],
-    blue: ["Light blue", "#bad1ec"]
+    cream: ["Cream / off-white", "#efe9da", 0],
+    white: ["White", "#f7f6f2", 0],
+    navy: ["Navy", "#232e4a", 1],
+    forest: ["Forest green", "#2f4b36", 2],
+    pink: ["Pink", "#f0c4ce", 3],
+    charcoal: ["Charcoal / black", "#29292c", 4],
+    blue: ["Light blue", "#bad1ec", 5]
   };
-  const DARK = new Set(["navy", "forest", "charcoal"]);
   const PIECES = [
-    { kind: "hoodie", title: "Hoodie", colours: ["cream", "navy", "forest", "pink", "charcoal", "blue"] },
-    { kind: "tee", title: "T-shirt", colours: ["white", "navy", "forest", "pink", "charcoal", "blue"] }
+    { kind: "hoodie", title: "Hoodie", w: 400, h: 448, yFront: 0, yBack: 448, yMask: 0, colours: ["cream", "navy", "forest", "pink", "charcoal", "blue"] },
+    { kind: "tee", title: "T-shirt", w: 400, h: 388, yFront: 896, yBack: 1284, yMask: 448, colours: ["white", "navy", "forest", "pink", "charcoal", "blue"] }
   ];
 
-  // ---------- the print, drawn in the garment's 400 x 460 box ----------
-  const PAINT = { green: "#79c25a", pink: "#f28db0", blue: "#56a5e2", yellow: "#f6c945", lilac: "#c3a8e6", mint: "#9ad6a4" };
-
-  // A painted handprint: palm, four fingers and a thumb, pointing up before it is turned.
-  function hand(x, y, rot, s, colour) {
-    const fingers = [[-15, -16, -27, -50], [-5, -20, -9, -61], [6, -20, 8, -62], [15, -16, 25, -50]]
-      .map(([x1, y1, x2, y2]) => `M${x1},${y1} L${x2},${y2}`).join(" ");
-    return `<g transform="translate(${x},${y}) rotate(${rot}) scale(${s})" fill="${colour}" stroke="${colour}" filter="url(#paint)" opacity=".95">
-        <ellipse cx="0" cy="0" rx="19" ry="22"/>
-        <path d="${fingers}" fill="none" stroke-width="9" stroke-linecap="round"/>
-        <path d="M-15,6 L-38,-8" fill="none" stroke-width="10" stroke-linecap="round"/>
-      </g>`;
+  function cropCanvas(img, x, y, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, x, y, w, h, 0, 0, w, h);
+    return c;
   }
 
-  function bee(x, y, s) {
-    return `<g transform="translate(${x},${y}) scale(${s})">
-        <ellipse cx="-3" cy="-9" rx="6" ry="8" fill="#fff" stroke="#333" stroke-width="1" opacity=".9" transform="rotate(-25 -3 -9)"/>
-        <ellipse cx="5" cy="-9" rx="6" ry="8" fill="#fff" stroke="#333" stroke-width="1" opacity=".9" transform="rotate(25 5 -9)"/>
-        <ellipse cx="0" cy="0" rx="12" ry="8" fill="${PAINT.yellow}" stroke="#222" stroke-width="1.2"/>
-        <path d="M-4,-7.5 L-4,7.5 M2,-8 L2,8" stroke="#222" stroke-width="3"/>
-        <circle cx="9" cy="-1.5" r="1.3" fill="#222"/>
-      </g>`;
-  }
+  // ---------- the sculpted, contour-snapped 3D garment ----------
+  const STEP = 2;
 
-  function flower(x, y, s) {
-    const petals = [0, 72, 144, 216, 288].map((a) => {
-      const r = a * Math.PI / 180;
-      return `<circle cx="${(Math.sin(r) * 6).toFixed(2)}" cy="${(-Math.cos(r) * 6).toFixed(2)}" r="5.2"/>`;
-    }).join("");
-    return `<g transform="translate(${x},${y}) scale(${s})"><g fill="${PAINT.pink}" stroke="#d9668e" stroke-width=".8">${petals}</g>
-      <circle r="3.6" fill="${PAINT.yellow}"/></g>`;
-  }
+  function buildPieceGeometry(THREE, maskCanvas, piece) {
+    const W = piece.w, H = piece.h;
+    const GW = Math.round(W / STEP) + 1, GH = Math.round(H / STEP) + 1;
+    const mdata = maskCanvas.getContext("2d").getImageData(0, 0, W, H).data;
 
-  function sun(x, y, s) {
-    const rays = Array.from({ length: 10 }, (_, i) => {
-      const r = i * Math.PI / 5;
-      return `M${(Math.cos(r) * 10).toFixed(2)},${(Math.sin(r) * 10).toFixed(2)} L${(Math.cos(r) * 14).toFixed(2)},${(Math.sin(r) * 14).toFixed(2)}`;
-    }).join(" ");
-    return `<g transform="translate(${x},${y}) scale(${s})">
-        <path d="${rays}" stroke="#f0a92a" stroke-width="2.2" stroke-linecap="round"/>
-        <circle r="8.5" fill="${PAINT.yellow}" stroke="#f0a92a" stroke-width="1"/>
-        <circle cx="-3" cy="-1.5" r="1" fill="#8a5300"/><circle cx="3" cy="-1.5" r="1" fill="#8a5300"/>
-        <path d="M-3.2,2.4 Q0,5 3.2,2.4" fill="none" stroke="#8a5300" stroke-width="1"/>
-      </g>`;
-  }
-
-  // The school badge on the chest: a little round crest.
-  function badge(x, y, s) {
-    return `<g transform="translate(${x},${y}) scale(${s})">
-        <circle r="13" fill="#fff" stroke="#5f86b3" stroke-width="1.4"/>
-        <path d="M-9,4 L-4,-3 L-1,1 L3,-5 L9,4 Z" fill="#5f86b3"/>
-        <path d="M-9,7 L9,7" stroke="#5f86b3" stroke-width="1.2"/>
-        <path d="M-7,-7 Q0,-11 7,-7" fill="none" stroke="#5f86b3" stroke-width="1"/>
-      </g>`;
-  }
-
-  // Vietnam's flag, as a sleeve patch.
-  function flag(x, y, rot, s) {
-    const star = Array.from({ length: 10 }, (_, i) => {
-      const r = (i * 36 - 90) * Math.PI / 180, d = i % 2 ? 2.4 : 6;
-      return `${(Math.cos(r) * d).toFixed(2)},${(Math.sin(r) * d).toFixed(2)}`;
-    }).join(" ");
-    return `<g transform="translate(${x},${y}) rotate(${rot}) scale(${s})">
-        <rect x="-13" y="-9" width="26" height="18" rx="1.5" fill="#da251d"/>
-        <polygon points="${star}" fill="#ffdd00"/>
-      </g>`;
-  }
-
-  // The clothesline of little outfits across the chest.
-  function clothesline(x0, x1, y, sag, ink) {
-    const L = window.ChamMerch.LITTLE;
-    const hung = [["tee", PAINT.pink], ["shorts", PAINT.blue], ["onesie", PAINT.yellow], ["dress", PAINT.mint], ["onesie", PAINT.lilac], ["sock", PAINT.pink]];
-    const mid = (x0 + x1) / 2;
-    const at = (t) => {          // a point on the sagging line
-      const x = x0 + (x1 - x0) * t;
-      return [x, y + sag * 4 * t * (1 - t)];
-    };
-    const clothes = hung.map(([k, c], i) => {
-      const t = (i + 0.5) / hung.length;
-      const [x, yy] = at(t);
-      const tilt = (t - 0.5) * 18;
-      return `<g transform="translate(${x.toFixed(1)},${(yy - 1).toFixed(1)}) rotate(${tilt.toFixed(1)}) scale(.82)">
-          <path d="${L[k]}" fill="${c}" stroke="${ink}" stroke-opacity=".45" stroke-width="1.1" stroke-linejoin="round"/>
-          <path d="M-4,-3 L-4,3 M4,-3 L4,3" stroke="${ink}" stroke-opacity=".6" stroke-width="1.5" stroke-linecap="round"/>
-        </g>`;
-    }).join("");
-    return `<path d="M${x0},${y} Q${mid},${y + sag * 2} ${x1},${y}" fill="none" stroke="${ink}" stroke-opacity=".6" stroke-width="1.1"/>${clothes}`;
-  }
-
-  // The back: CHAM over the four painted handprints, with the motto underneath.
-  function backPrint(ink) {
-    return `${hand(-36, -38, -22, 1, PAINT.green)}
-      ${hand(30, -52, 14, 0.62, PAINT.yellow)}
-      ${hand(-40, 40, 200, 0.82, PAINT.pink)}
-      ${hand(44, 40, 24, 1, PAINT.blue)}
-      ${bee(58, -78, 1)}
-      <text x="0" y="14" text-anchor="middle" font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif" font-weight="900"
-        font-size="42" letter-spacing="1" fill="${ink}" stroke="${ink === "#fff" ? "#1d1d1f" : "#fff"}" stroke-width="1.2" paint-order="stroke">CHAM</text>
-      <g font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="700" letter-spacing="1.2" text-anchor="middle" fill="${ink}">
-        <text x="0" y="112">CHANGING LIVES THROUGH</text><text x="0" y="122">COMPASSION</text>
-      </g>`;
-  }
-
-  function printFor(kind, side, ink) {
-    if (kind === "hoodie") {
-      return side === "front"
-        ? `${badge(146, 168, 1)}${flower(254, 166, 1.1)}${clothesline(122, 278, 214, 9, ink)}`
-        : `<g transform="translate(200,250) scale(.9)">${backPrint(ink)}</g>`;
-    }
-    return side === "front"
-      ? `${badge(138, 108, 1)}${sun(262, 108, 1.1)}${clothesline(116, 284, 152, 10, ink)}${flag(350, 122, 42, 1)}`
-      : `<g transform="translate(200,206) scale(.95)">${backPrint(ink)}</g>${flag(50, 122, -42, 1)}`;
-  }
-
-  /* One side of the garment as a flat picture. The other side is laid
-     underneath, mirrored, so the inside of the collar shows through the
-     neck hole the way it does on a real shirt. */
-  function sideSVG(kind, side, colour, px) {
-    const g = window.ChamMerch.garment;
-    const other = side === "front" ? "back" : "front";
-    const ink = DARK.has(colour) ? "#fff" : "#1d1d1f";
-    const h = Math.round(px * 460 / 400);
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${h}" viewBox="0 0 400 460">
-      <defs>
-        <filter id="paint" x="-20%" y="-20%" width="140%" height="140%">
-          <feTurbulence type="fractalNoise" baseFrequency=".09" numOctaves="2" seed="4"/>
-          <feDisplacementMap in="SourceGraphic" scale="4"/>
-        </filter>
-        <style>.shirt{fill:${COL[colour][1]}} .g [stroke]{stroke:rgba(0,0,0,.28)}</style>
-      </defs>
-      <g class="g">
-        <g transform="translate(400,0) scale(-1,1)">${g(kind, other)}</g>
-        ${g(kind, side)}
-      </g>
-      ${printFor(kind, side, ink)}
-    </svg>`;
-  }
-
-  function rasterize(svg) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-      const img = new Image();
-      img.onload = () => {
-        const c = document.createElement("canvas");
-        c.width = img.width; c.height = img.height;
-        c.getContext("2d").drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        resolve(c);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not draw the design")); };
-      img.src = url;
-    });
-  }
-
-  // ---------- the inflated garment ----------
-  const STEP = 2;                        // grid spacing, in the 400 x 460 drawing's units
-  const GW = 400 / STEP + 1, GH = 460 / STEP + 1;
-
-  /* How far each grid point is pushed out: rounded at the edge like a
-     stuffed cushion, flatter across the middle, plus a gentle curve across
-     the chest so the front isn't a flat board. */
-  function heights(front, back) {
-    const fa = front.getContext("2d").getImageData(0, 0, front.width, front.height).data;
-    const ba = back.getContext("2d").getImageData(0, 0, back.width, back.height).data;
-    const W = front.width, H = front.height;
-    const inside = new Uint8Array(GW * GH);
+    // Sample the symmetric silhouette mask onto the grid, then smooth it so
+    // the 0.5 iso-contour is a silky curve with no pixel stair-steps.
+    let f = new Float32Array(GW * GH);
     for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
       const x = Math.min(W - 1, Math.round(i / (GW - 1) * (W - 1)));
       const y = Math.min(H - 1, Math.round(j / (GH - 1) * (H - 1)));
-      const a = fa[(y * W + x) * 4 + 3], b = ba[(y * W + (W - 1 - x)) * 4 + 3];
-      inside[j * GW + i] = (a > 127 || b > 127) ? 1 : 0;
+      f[j * GW + i] = mdata[(y * W + x) * 4] / 255;
     }
-    // chamfer distance to the nearest point outside the garment
+    for (let pass = 0; pass < 3; pass++) {
+      const nf = new Float32Array(f.length);
+      for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+        const k = j * GW + i;
+        nf[k] = (f[k] * 4 + f[k - 1] + f[k + 1] + f[k - GW] + f[k + GW]) / 8;
+      }
+      f = nf;
+    }
+
+    const inside = new Uint8Array(GW * GH);
+    for (let k = 0; k < f.length; k++) inside[k] = f[k] >= 0.5 ? 1 : 0;
+
+    // Chamfer distance to the outside, for the rounded 3D cushion profile
     const BIG = 1e9, d = new Float32Array(GW * GH);
     for (let k = 0; k < d.length; k++) d[k] = inside[k] ? BIG : 0;
     const relax = (k, n, w) => { if (d[n] + w < d[k]) d[k] = d[n] + w; };
@@ -213,63 +87,191 @@
       if (i < GW - 1) relax(k, k + 1, 1);
       if (j < GH - 1) { relax(k, k + GW, 1); if (i < GW - 1) relax(k, k + GW + 1, 1.414); if (i > 0) relax(k, k + GW - 1, 1.414); }
     }
-    const R = 30, DEPTH = 22, CURVE = 12;
-    let z = new Float32Array(GW * GH);
+
+    // Snap any vertex next to the silhouette directly onto the f = 0.5 curve
+    // so the outer triangles follow a smooth outline instead of grid stairs.
+    const gx = new Float32Array(GW * GH), gy = new Float32Array(GW * GH);
+    const active = new Uint8Array(GW * GH), isRim = new Uint8Array(GW * GH);
     for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
       const k = j * GW + i;
-      if (!inside[k]) continue;
-      const t = Math.min(d[k] * STEP / R, 1);
-      const across = (i * STEP - 200) / 210;
-      z[k] = DEPTH * Math.sqrt(1 - (1 - t) * (1 - t)) + CURVE * t * Math.max(0, 1 - across * across);
+      gx[k] = i * STEP;
+      gy[k] = j * STEP;
+      if (inside[k]) active[k] = 1;
     }
-    // Smooth away the chamfer's facets. Letting it spread a few points past
-    // the edge rounds the rim off, so the outline doesn't step along the grid.
-    for (let pass = 0; pass < 5; pass++) {
-      const nz = new Float32Array(z.length);
+    for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+      const k = j * GW + i;
+      const hasIn = inside[k] || inside[k - 1] || inside[k + 1] || inside[k - GW] || inside[k + GW]
+        || inside[k - GW - 1] || inside[k - GW + 1] || inside[k + GW - 1] || inside[k + GW + 1];
+      const hasOut = !inside[k] || !inside[k - 1] || !inside[k + 1] || !inside[k - GW] || !inside[k + GW];
+      if (!inside[k] && hasIn && hasOut) {
+        active[k] = 1;
+        isRim[k] = 1;
+        const dfx = (f[k + 1] - f[k - 1]) * 0.5;
+        const dfy = (f[k + GW] - f[k - GW]) * 0.5;
+        const len2 = dfx * dfx + dfy * dfy;
+        if (len2 > 1e-5) {
+          const step = Math.max(-0.85, Math.min(0.85, (0.5 - f[k]) / len2));
+          gx[k] += step * dfx * STEP;
+          gy[k] += step * dfy * STEP;
+        }
+      } else if (inside[k] && hasOut) {
+        const dfx = (f[k + 1] - f[k - 1]) * 0.5;
+        const dfy = (f[k + GW] - f[k - GW]) * 0.5;
+        const len2 = dfx * dfx + dfy * dfy;
+        if (len2 > 1e-5 && f[k] < 0.68) {
+          isRim[k] = 1;
+          const step = Math.max(-0.65, Math.min(0.65, (0.5 - f[k]) / len2));
+          gx[k] += step * dfx * STEP;
+          gy[k] += step * dfy * STEP;
+        }
+      }
+    }
+
+    for (let pass = 0; pass < 6; pass++) {
+      const nx = new Float32Array(gx), ny = new Float32Array(gy);
       for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
         const k = j * GW + i;
-        nz[k] = (z[k] * 4 + z[k - 1] + z[k + 1] + z[k - GW] + z[k + GW]) / 8;
+        if (!active[k] || isRim[k]) continue;
+        if (!active[k - 1] || !active[k + 1] || !active[k - GW] || !active[k + GW]) continue;
+        nx[k] = (gx[k] * 2 + gx[k - 1] + gx[k + 1] + gx[k - GW] + gx[k + GW]) / 6;
+        ny[k] = (gy[k] * 2 + gy[k - 1] + gy[k + 1] + gy[k - GW] + gy[k + GW]) / 6;
       }
-      z = nz;
+      gx.set(nx); gy.set(ny);
     }
-    return { z, inside };
-  }
 
-  function buildGeometry(THREE, z, inside, facing) {
-    const pos = new Float32Array(GW * GH * 3), uv = new Float32Array(GW * GH * 2);
-    const S = 1 / 100;
+    // Smooth the distance field before taking the cushion curve so steep
+    // diagonal sleeve edges have no grid ripples in their surface normals.
+    let sd = d;
+    for (let pass = 0; pass < 10; pass++) {
+      const nd = new Float32Array(sd.length);
+      for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+        const k = j * GW + i;
+        if (!active[k] || isRim[k]) continue;
+        nd[k] = (sd[k] * 4 + sd[k - 1] + sd[k + 1] + sd[k - GW] + sd[k + GW]) / 8;
+      }
+      sd = nd;
+    }
+
+    // Base cushion depth + subtle 3D creases for sleeves, hood, collar and cuffs
+    const R = 30, DEPTH = 21, CURVE = 13;
+    let baseZ = new Float32Array(GW * GH);
     for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
       const k = j * GW + i;
-      pos[k * 3] = (i * STEP - 200) * S;
-      pos[k * 3 + 1] = (230 - j * STEP) * S;
-      pos[k * 3 + 2] = z[k] * S * facing;
-      uv[k * 2] = facing > 0 ? i / (GW - 1) : 1 - i / (GW - 1);
-      uv[k * 2 + 1] = 1 - j / (GH - 1);
-    }
-    // keep only the cells on or next to the garment
-    const near = (i, j) => {
-      for (let b = Math.max(0, j - 3); b <= Math.min(GH - 1, j + 4); b++)
-        for (let a = Math.max(0, i - 3); a <= Math.min(GW - 1, i + 4); a++) if (inside[b * GW + a]) return true;
-      return false;
-    };
-    const idx = [];
-    for (let j = 0; j < GH - 1; j++) for (let i = 0; i < GW - 1; i++) {
-      if (!near(i, j)) continue;
-      const a = j * GW + i, b = a + GW, c = a + 1, d = b + 1;
-      if (facing > 0) idx.push(a, b, c, b, d, c); else idx.push(a, c, b, b, c, d);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    return geo;
-  }
+      if (!active[k] || isRim[k]) continue;
+      const t = Math.min(sd[k] * STEP / R, 1);
+      const ux = (gx[k] - W / 2) / (W / 2), uy = gy[k] / H;
+      let z = DEPTH * Math.pow(t, 0.58) + CURVE * t * Math.max(0, 1 - ux * ux);
 
-  const TEX = 1024;
-  async function textures(kind, colour) {
-    const [front, back] = await Promise.all([rasterize(sideSVG(kind, "front", colour, TEX)), rasterize(sideSVG(kind, "back", colour, TEX))]);
-    return { front, back };
+      if (piece.kind === "hoodie") {
+        // Vertical 3D crease where the drop-shoulder sleeves meet the torso
+        if (uy > 0.30 && uy < 0.90) {
+          const seamX = 0.44 + (uy - 0.30) * 0.08;
+          const ds = Math.abs(Math.abs(ux) - seamX);
+          if (ds < 0.09) {
+            const w = 0.5 * (1 + Math.cos(Math.PI * ds / 0.09));
+            z *= 1 - 0.32 * w;
+          }
+        }
+        // Subtle gather and step at the ribbed waistband
+        if (uy > 0.84 && Math.abs(ux) < 0.48) {
+          const band = Math.min(1, (uy - 0.84) / 0.04);
+          z *= 1 - 0.14 * band;
+        }
+      } else {
+        // T-shirt armhole seam crease
+        if (uy > 0.12 && uy < 0.48) {
+          const seamX = 0.44 + (uy - 0.12) * 0.22;
+          const ds = Math.abs(Math.abs(ux) - seamX);
+          if (ds < 0.08) {
+            const w = 0.5 * (1 + Math.cos(Math.PI * ds / 0.08));
+            z *= 1 - 0.20 * w;
+          }
+        }
+      }
+      baseZ[k] = z;
+    }
+
+    for (let pass = 0; pass < 10; pass++) {
+      const nz = new Float32Array(baseZ.length);
+      for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+        const k = j * GW + i;
+        if (!active[k] || isRim[k]) continue;
+        nz[k] = (baseZ[k] * 4 + baseZ[k - 1] + baseZ[k + 1] + baseZ[k - GW] + baseZ[k + GW]) / 8;
+      }
+      baseZ = nz;
+    }
+
+    function sideGeo(facing) {
+      const pos = new Float32Array(GW * GH * 3), uv = new Float32Array(GW * GH * 2);
+      const S = 1 / 96;
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+        const k = j * GW + i;
+        const ux = (gx[k] - W / 2) / (W / 2), uy = gy[k] / H;
+        let z = baseZ[k];
+        if (!isRim[k] && z > 0) {
+          if (piece.kind === "hoodie") {
+            if (facing > 0 && uy < 0.19) {
+              // Front hood opening recesses inward; crossover flaps puff forward
+              const cavityW = 0.28 * (1 - uy / 0.19);
+              if (Math.abs(ux) < cavityW) {
+                const cw = Math.cos(Math.PI * 0.5 * Math.abs(ux) / Math.max(0.01, cavityW));
+                z *= 1 - 0.52 * cw;
+              } else if (Math.abs(ux) < 0.44) {
+                z *= 1.12;
+              }
+            } else if (facing < 0 && uy < 0.27 && Math.abs(ux) < 0.44) {
+              // Back hood pouch bulges softly outward
+              const hw = Math.cos(Math.PI * 0.5 * Math.min(1, Math.abs(ux) / 0.44)) * Math.sin(Math.PI * Math.min(1, uy / 0.27));
+              z += 5.5 * hw;
+            }
+          } else if (facing > 0 && uy < 0.15 && Math.abs(ux) < 0.27) {
+            // T-shirt front crew-neck opening recesses slightly
+            const nr = Math.sqrt((ux / 0.26) * (ux / 0.26) + ((uy - 0.03) / 0.11) * ((uy - 0.03) / 0.11));
+            if (nr < 1) z *= 0.55 + 0.45 * nr * nr;
+          }
+        }
+        pos[k * 3] = (gx[k] - W / 2) * S;
+        pos[k * 3 + 1] = (H / 2 - gy[k]) * S;
+        pos[k * 3 + 2] = z * S * facing;
+        const u = gx[k] / W, v = 1 - gy[k] / H;
+        uv[k * 2] = facing > 0 ? u : 1 - u;
+        uv[k * 2 + 1] = v;
+      }
+
+      const idx = [];
+      for (let j = 0; j < GH - 1; j++) for (let i = 0; i < GW - 1; i++) {
+        const a = j * GW + i, b = a + GW, c = a + 1, d0 = b + 1;
+        if (active[a] && active[b] && active[c] && !(isRim[a] && isRim[b] && isRim[c])) {
+          if (facing > 0) idx.push(a, b, c); else idx.push(a, c, b);
+        }
+        if (active[b] && active[d0] && active[c] && !(isRim[b] && isRim[d0] && isRim[c])) {
+          if (facing > 0) idx.push(b, d0, c); else idx.push(b, c, d0);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      const nrm = geo.getAttribute("normal").array;
+      for (let pass = 0; pass < 3; pass++) {
+        const nn = new Float32Array(nrm.length);
+        for (let j = 1; j < GH - 1; j++) for (let i = 1; i < GW - 1; i++) {
+          const k = j * GW + i;
+          if (!active[k]) continue;
+          const k3 = k * 3, l3 = (k - 1) * 3, r3 = (k + 1) * 3, u3 = (k - GW) * 3, d3 = (k + GW) * 3;
+          let nx = nrm[k3] * 4 + nrm[l3] + nrm[r3] + nrm[u3] + nrm[d3];
+          let ny = nrm[k3 + 1] * 4 + nrm[l3 + 1] + nrm[r3 + 1] + nrm[u3 + 1] + nrm[d3 + 1];
+          let nz = nrm[k3 + 2] * 4 + nrm[l3 + 2] + nrm[r3 + 2] + nrm[u3 + 2] + nrm[d3 + 2];
+          const len = Math.hypot(nx, ny, nz) || 1;
+          nn[k3] = nx / len; nn[k3 + 1] = ny / len; nn[k3 + 2] = nz / len;
+        }
+        nrm.set(nn);
+      }
+      return geo;
+    }
+
+    return { frontGeo: sideGeo(1), backGeo: sideGeo(-1) };
   }
 
   function shadowTexture(THREE) {
@@ -294,40 +296,53 @@
     hint.textContent = "Drag to turn it";
     stage.append(msg, hint);
 
-    const state = { colour: piece.colours[0], rotY: -0.45, rotX: 0.06, vel: 0, target: null, idleAt: 0, dragging: false };
-    let api = null;                      // filled once three.js has loaded
+    const state = { colour: piece.colours[0], rotY: -0.38, rotX: 0.05, vel: 0, target: null, idleAt: 0, dragging: false };
+    let api = null;
 
     async function start() {
-      const THREE = await loadThree();
+      const [THREE, atlas] = await Promise.all([loadThree(), loadAtlas()]);
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-      camera.position.set(0, 0.15, 11.5);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc8b8, 1.9));
-      const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(3, 4, 6); scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 1.0); rim.position.set(-4, 2, -6); scene.add(rim);
+      camera.position.set(0, 0.08, 11.2);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xd8d2c5, 2.2));
+      const key = new THREE.DirectionalLight(0xffffff, 1.15); key.position.set(3, 4, 7); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.85); rim.position.set(-4, 2, -6); scene.add(rim);
 
-      const { front, back } = await textures(piece.kind, state.colour);
-      const { z, inside } = heights(front, back);
-      const tex = (canvas) => {
-        const t = new THREE.CanvasTexture(canvas);
+      const maskCanvas = cropCanvas(atlas, 6 * 400, piece.yMask, piece.w, piece.h);
+      const { frontGeo, backGeo } = buildPieceGeometry(THREE, maskCanvas, piece);
+
+      const maxAniso = renderer.capabilities.getMaxAnisotropy();
+      const tileTex = (colour, isBack) => {
+        const colIdx = COL[colour][2];
+        const c = cropCanvas(atlas, colIdx * 400, isBack ? piece.yBack : piece.yFront, piece.w, piece.h);
+        const t = new THREE.CanvasTexture(c);
         t.colorSpace = THREE.SRGBColorSpace;
-        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        t.anisotropy = maxAniso;
         return t;
       };
-      const mat = (canvas) => new THREE.MeshStandardMaterial({ map: tex(canvas), alphaTest: 0.5, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
-      const frontMesh = new THREE.Mesh(buildGeometry(THREE, z, inside, 1), mat(front));
-      const backMesh = new THREE.Mesh(buildGeometry(THREE, z, inside, -1), mat(back));
+      const mat = (colour, isBack) => new THREE.MeshStandardMaterial({
+        map: tileTex(colour, isBack),
+        roughness: 0.92,
+        metalness: 0,
+        side: THREE.FrontSide
+      });
+
+      const frontMesh = new THREE.Mesh(frontGeo, mat(state.colour, false));
+      const backMesh = new THREE.Mesh(backGeo, mat(state.colour, true));
       const model = new THREE.Group();
       model.add(frontMesh, backMesh);
-      model.position.y = 0.05;
+      model.position.y = 0.08;
       scene.add(model);
 
-      const shadow = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.1), new THREE.MeshBasicMaterial({ map: shadowTexture(THREE), transparent: true, depthWrite: false }));
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.5, 1.05),
+        new THREE.MeshBasicMaterial({ map: shadowTexture(THREE), transparent: true, depthWrite: false })
+      );
       shadow.rotation.x = -Math.PI / 2;
-      shadow.position.y = -2.45;
+      shadow.position.y = -2.42;
       scene.add(shadow);
 
       msg.remove();
@@ -355,26 +370,23 @@
         } else if (!state.dragging) {
           state.rotY += state.vel;
           state.vel *= 0.92;
-          if (Math.abs(state.vel) < 0.0005 && now > state.idleAt) state.rotY += dt * 0.35;   // idle: turn slowly
-          state.rotX += (0.06 - state.rotX) * Math.min(1, dt * 2);
+          if (Math.abs(state.vel) < 0.0005 && now > state.idleAt) state.rotY += dt * 0.35;
+          state.rotX += (0.05 - state.rotX) * Math.min(1, dt * 2);
         }
         model.rotation.set(state.rotX, state.rotY, 0);
         renderer.render(scene, camera);
         requestAnimationFrame(frame);
       };
-      // only draw while it's on screen
       new IntersectionObserver(([e]) => {
         if (e.isIntersecting && !running) { running = true; last = 0; requestAnimationFrame(frame); }
         else if (!e.isIntersecting) running = false;
       }).observe(stage);
 
       api = {
-        async recolour(colour) {
-          const t = await textures(piece.kind, colour);
-          if (state.colour !== colour) return;           // another colour was tapped meanwhile
-          [[frontMesh, t.front], [backMesh, t.back]].forEach(([m, c]) => {
+        recolour(colour) {
+          [[frontMesh, false], [backMesh, true]].forEach(([m, isBack]) => {
             const old = m.material.map;
-            m.material.map = tex(c);
+            m.material.map = tileTex(colour, isBack);
             m.material.needsUpdate = true;
             old.dispose();
           });
@@ -405,9 +417,9 @@
     stage.addEventListener("pointerup", release);
     stage.addEventListener("pointercancel", release);
 
-    // turn to show the front or the back, whichever way is shorter
     function face(back) {
       const want = back ? Math.PI : 0;
+      if (!api) { state.rotY = want - 0.38; state.target = null; return; }
       const turns = Math.round((state.rotY - want) / (2 * Math.PI));
       state.target = want + turns * 2 * Math.PI;
       state.vel = 0;
@@ -418,7 +430,6 @@
       if (api) api.recolour(colour);
     }
 
-    // start loading three.js only when the viewer is about to be seen
     const io = new IntersectionObserver(([e]) => {
       if (!e.isIntersecting) return;
       io.disconnect();
@@ -484,8 +495,6 @@
     return fig;
   }
 
-  /* Built once and kept: the Merch tab redraws often, and making a new 3D
-     view each time would run the browser out of WebGL contexts. */
   let SECTION = null;
   function section() {
     if (SECTION) return SECTION;
@@ -507,5 +516,5 @@
     return wrap;
   }
 
-  window.ChamMerch3D = { section, sideSVG };
+  window.ChamMerch3D = { section };
 })();

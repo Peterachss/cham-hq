@@ -9,10 +9,10 @@
    amount of reloading helped. Offline still works: every response is copied
    into the cache on the way past, and the cache answers when the network
    cannot. */
-const CACHE = "cham-hq-v83";
+const CACHE = "cham-hq-v84";
 const SHELL = [
-  "./", "./index.html", "./styles.css?v=83", "./merch.js?v=83", "./merch3d.js?v=83", "./app.js?v=83",
-  "./firebase-config.js?v=83", "./live.js?v=83", "./manifest.webmanifest",
+  "./", "./index.html", "./styles.css?v=84", "./merch.js?v=84", "./merch3d.js?v=84", "./merch3d.webp?v=84", "./app.js?v=84",
+  "./firebase-config.js?v=84", "./live.js?v=84", "./manifest.webmanifest",
   "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-512-maskable.png"
 ];
 
