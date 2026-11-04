@@ -1553,10 +1553,10 @@ body:not([data-view="updates"]):not([data-view="tasks"]) .glance { display: none
 .fab { box-shadow: none; outline: 3px solid var(--sheet); }
 .fab:hover { box-shadow: none; }
 @media (min-width: 1100px) {
-  .fab { left: 22px; right: auto; bottom: 22px; width: 204px; justify-content: flex-start; outline: 0; }
-  body.has-install .fab { bottom: 22px; }
-  body:not(.locked) .top-in { padding-bottom: 110px; }
-  body.has-fab .wrap { padding-bottom: 96px; }
+  /* Log money floats at the bottom right, clear of the menu and its sign-out links */
+  .fab { right: 28px; bottom: 24px; }
+  body.has-install .fab, body:has(> .install:not([hidden])) .fab { bottom: 104px; }   /* sit above the install prompt */
+  body.has-fab .wrap { padding-bottom: 120px; }
 }
 
 /* round 3: air under the notice, honest empty states */
