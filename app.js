@@ -315,6 +315,8 @@
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = reg && await reg.pushManager.getSubscription();
       pushState = sub && Notification.permission === "granted" ? "on" : "off";
+      // this browser already failed to sign up for lack of a push service: don't keep offering the button
+      if (pushState === "off") { try { if (localStorage.getItem("cham-push-unsupported")) pushState = "none"; } catch (e) {} }
       /* keep this device's subscription on file for whoever is signed in */
       if (pushState === "on" && SESSION && window.ChamLive && !pushSavedThisSession) {
         pushSavedThisSession = true;
@@ -329,17 +331,32 @@
     }
   }
 
+  /* Some browsers have the buttons but no push service behind them (Ecosia,
+     Brave with Google push messaging off, some Chromium builds): subscribing
+     fails with a "push service" error, or never answers at all. A website
+     can't add the service to a browser, so say plainly what will work, and
+     stop asking on this browser. */
+  const within = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(Object.assign(new Error("no answer"), { name: "TimeoutError" })), ms))]);
+  const IS_BRAVE = Boolean(navigator.brave);
+  const noPushService = () => { try { localStorage.setItem("cham-push-unsupported", "1"); } catch (e) {} };
+  function pushFailText(err) {
+    const t = ((err && (err.name + " " + err.message)) || "").toLowerCase();
+    if (t.includes("permission") || t.includes("notallowed")) return "Notifications are blocked for this site. Allow them in the browser\u2019s site settings (the icon left of the web address), then try again.";
+    if (IS_BRAVE) return "Brave keeps website notifications off by default. In Settings \u2192 Privacy and security, turn on \u201cUse Google services for push messaging\u201d, restart Brave, then try again.";
+    return "This browser can\u2019t receive notifications from websites \u2014 it doesn\u2019t include the push service they need (Ecosia and a few others leave it out). Everything else on Ch\u1ea1m HQ works here; for notifications, open it once in Chrome, Edge or Safari and turn them on there.";
+  }
+
   async function turnPushOn(btn, msg) {
     btn.disabled = true; btn.textContent = "Asking\u2026";
     try {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { pushState = perm === "denied" ? "denied" : "off"; drawNotify(); return; }
-      if (!navigator.serviceWorker.controller) await navigator.serviceWorker.register("sw.js");
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({
+      if (!navigator.serviceWorker.controller) await within(navigator.serviceWorker.register("sw.js"), 15000);
+      const reg = await within(navigator.serviceWorker.ready, 15000);
+      let sub = await within(reg.pushManager.getSubscription(), 15000);
+      if (!sub) sub = await within(reg.pushManager.subscribe({
         userVisibleOnly: true, applicationServerKey: b64uToU8(window.CHAM_PUSH_KEY)
-      });
+      }), 15000);
       await window.ChamLive.savePushSub(sub.toJSON(), deviceLabel());
       pushSavedThisSession = true;
       pushState = "on";
@@ -351,9 +368,11 @@
       drawNotify();
     } catch (err) {
       console.error("Ch\u1ea1m HQ: turning notifications on failed", err);
-      btn.disabled = false; btn.textContent = "Turn on notifications";
-      msg.textContent = "That didn\u2019t work on this browser (" + (err.name || "error") + "). Try Chrome, or on iPhone the Home Screen app.";
+      btn.disabled = false; btn.textContent = "Try again";
+      msg.textContent = pushFailText(err);
       msg.classList.add("bad");
+      const t = ((err && (err.name + " " + err.message)) || "").toLowerCase();
+      if (!t.includes("permission") && !t.includes("notallowed")) noPushService();
     }
   }
 
@@ -445,7 +464,7 @@
     } else if (pushState === "none") {
       bar.append(el("div", { class: "nb-body" }, [
         el("b", { text: "This browser can\u2019t do notifications" }),
-        el("span", { text: "Chrome, Edge or Firefox can \u2014 or on iPhone, the Home Screen app." })
+        el("span", { text: "It doesn\u2019t include the push service website notifications need (Ecosia and a few others leave it out). Everything else works here \u2014 for notifications, open Ch\u1ea1m HQ once in Chrome, Edge or Safari and turn them on there, or on iPhone use the Home Screen app." })
       ]), later);
     } else {
       const go = el("button", { class: "au-go", type: "button", text: "Turn on notifications" });
