@@ -1647,3 +1647,24 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover { border-color: var(--jade); background: var(--jade-soft); color: var(--jade); }
 .ad-in[type="file"] { border: 0; background: none; padding: 0; }
+
+/* a date without typing a year: quick choices, then day + month */
+.datef { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.datef-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.datef-c { font-size: 13px; padding: 6px 12px; }
+.datef-pick { display: flex; gap: 8px; }
+.datef-pick[hidden] { display: none; }
+.datef-pick select { min-width: 80px; }
+.datef-shown { font-size: 13px; color: var(--muted); min-height: 1em; }
+.datef-shown:empty { display: none; }
+.datef.off { opacity: .55; }
+
+/* New job: labelled fields, the way a real form reads */
+#admin-panel .nj-title { margin: 0 0 16px; font-size: 16px; font-weight: 600; color: var(--ink); }
+#admin-panel .nj-row { display: grid; grid-template-columns: minmax(160px, 220px) 1fr; gap: 14px; }
+#admin-panel .nj-f { display: flex; flex-direction: column; gap: 7px; margin: 0 0 16px; min-width: 0; }
+#admin-panel .nj-l { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+#admin-panel .nj-f > .ad-in { width: 100%; }
+#admin-panel .nj-f > * { flex: none; }   /* the inputs' row-sizing must not stretch them tall in a column */
+#admin-panel .nj-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+@media (max-width: 600px) { #admin-panel .nj-row { grid-template-columns: 1fr; gap: 0; } }

@@ -87,6 +87,81 @@
     const d = fromIso(iso);
     return d ? DOW[(d.getDay()+6)%7] + " " + d.getDate() + " " + MON[d.getMonth()] : "";
   }
+  /* ----- a date without typing a year -----
+     Quick choices (Today, Tomorrow, Friday, In a week; or Today and
+     Yesterday for things that already happened) and "Pick a date", which
+     asks only for the day and the month. The year fills itself in: for a
+     due date the next time that day comes round, for money and past
+     activities the last time it did. Behaves like a date input: .value is
+     "YYYY-MM-DD" or "", and it fires input and change. */
+  const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function addDays(iso, n) { const d = fromIso(iso); d.setDate(d.getDate() + n); return isoDay(d); }
+  function dateField(o) {
+    o = o || {};
+    const mode = o.mode || "future";            // "future" | "past" | "any"
+    const box = el("div", { class: "datef", role: "group", "aria-label": o.label || "Date" });
+    const quick = [];
+    if (o.none) quick.push(["", "No date"]);
+    quick.push([TODAY, "Today"]);
+    if (mode === "past") quick.push([addDays(TODAY, -1), "Yesterday"]);
+    else {
+      quick.push([addDays(TODAY, 1), "Tomorrow"]);
+      if (mode === "future") {
+        const toFri = ((5 - fromIso(TODAY).getDay()) + 7) % 7 || 7;
+        if (toFri > 1) quick.push([addDays(TODAY, toFri), "Friday"]);
+        quick.push([addDays(TODAY, 7), "In a week"]);
+      }
+    }
+    const daySel = el("select", { class: "ad-in", "aria-label": "Day" },
+      Array.from({ length: 31 }, (_, i) => el("option", { value: String(i + 1), text: String(i + 1) })));
+    const monSel = el("select", { class: "ad-in", "aria-label": "Month" },
+      MONTHS_SHORT.map((m, i) => el("option", { value: String(i), text: m })));
+    const pick = el("div", { class: "datef-pick" }, [daySel, monSel]);
+    const shown = el("span", { class: "datef-shown" });
+    let value = "";
+    function fromPick() {
+      const day = Number(daySel.value), mon = Number(monSel.value), y0 = fromIso(TODAY).getFullYear();
+      const make = (y) => isoDay(new Date(y, mon, Math.min(day, new Date(y, mon + 1, 0).getDate())));
+      let iso = make(y0);
+      if (mode === "future" && iso < TODAY) iso = make(y0 + 1);
+      if (mode === "past" && iso > TODAY) iso = make(y0 - 1);
+      if (mode === "any") iso = [make(y0 - 1), iso, make(y0 + 1)].sort((a, b) => Math.abs(days(TODAY, a)) - Math.abs(days(TODAY, b)))[0];
+      return iso;
+    }
+    const btns = quick.map(([v, label]) => el("button", { class: "chipbtn plain datef-c", type: "button", text: label,
+      onclick: () => set(v, true) }));
+    const pickBtn = el("button", { class: "chipbtn plain datef-c", type: "button", text: "Pick a date",
+      onclick: () => {
+        if (!value) { const d = fromIso(TODAY); daySel.value = String(d.getDate()); monSel.value = String(d.getMonth()); }
+        set(value ? value : fromPick(), true, true);
+        daySel.focus();
+      } });
+    function set(v, byUser, picking) {
+      value = v || "";
+      const q = picking ? -1 : quick.findIndex(([d]) => d === value);
+      btns.forEach((b, i) => b.setAttribute("aria-pressed", String(i === q)));
+      const usePick = q < 0 && (picking || Boolean(value));
+      pickBtn.setAttribute("aria-pressed", String(usePick));
+      pick.hidden = !usePick;
+      if (value) { const d = fromIso(value); daySel.value = String(d.getDate()); monSel.value = String(d.getMonth()); }
+      const yr = value ? fromIso(value).getFullYear() : 0;
+      shown.textContent = value ? pretty(value) + (yr !== fromIso(TODAY).getFullYear() ? " " + yr : "") + " \u00b7 " + relDay(value) : "";
+      if (byUser) {
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+        box.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    [daySel, monSel].forEach((s) => s.addEventListener("change", (e) => { e.stopPropagation(); set(fromPick(), true, true); }));
+    Object.defineProperty(box, "value", { get: () => value, set: (v) => set(v, false) });
+    Object.defineProperty(box, "disabled", { get: () => box.classList.contains("off"),
+      set: (d) => { box.classList.toggle("off", Boolean(d)); box.querySelectorAll("button, select").forEach((x) => { x.disabled = Boolean(d); }); } });
+    box.focus = () => (btns[0] || pickBtn).focus();
+    box.append(el("div", { class: "datef-chips" }, btns.concat([pickBtn])), pick, shown);
+    set(o.value || "", false);
+    if (o.disabled) box.disabled = true;
+    return box;
+  }
+
   function relDay(iso) {
     const n = days(TODAY, iso);
     if (n === null) return "";
@@ -1174,7 +1249,7 @@
       if (focus) inp.focus();
     };
     more.addEventListener("click", () => addOpt(true));
-    const closes = el("input", { class: "ad-in", type: "date", min: TODAY, "aria-label": "Closes on (optional)" });
+    const closes = dateField({ label: "Closes on (optional)", none: true });
     const msg = el("span", { class: "ad-msg" });
     const reset = () => { q.value = ""; closes.value = ""; opts.replaceChildren(); addOpt(); addOpt(); };
     const ask = el("button", { class: "au-go", type: "button", text: "Ask everyone", onclick: async () => {
@@ -1577,7 +1652,7 @@
       : EV_EDIT;                                   // a plan target being turned into a real event
     const id = typeof EV_EDIT === "string" && EV_EDIT !== "new" ? EV_EDIT : null;
     const name = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: cur.name || "", placeholder: "Event, e.g. Ice cream sale", "aria-label": "Event" });
-    const date = el("input", { class: "ad-in", type: "date", value: cur.date || "", "aria-label": "Date" });
+    const date = dateField({ value: cur.date || "", label: "Date" });
     const locked = el("input", { type: "checkbox", id: "ev-locked", checked: cur.locked === true });
     const line = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: cur.line || "", placeholder: "Money is logged under\u2026 (blank = the event name)", "aria-label": "Money line" });
     const picked = new Set(cur.jobs || eventJobs({ ...cur, jobs: null }).map((t) => t.id));
@@ -1876,8 +1951,7 @@
     const today = isoDay(new Date());
 
     /* ---- one line at a time ---- */
-    const date = el("input", { class: "ad-in", type: "date", value: today,
-                               "aria-label": "Which day", disabled: !admin });
+    const date = dateField({ value: today, label: "Which day", mode: "past", disabled: !admin });
     const who = admin
       ? peopleOptions(el("select", { class: "ad-in", "aria-label": "Who" }))
       : el("span", { class: "ad-fixed" }, [avatar(SESSION.personKey),
@@ -2152,7 +2226,7 @@
   function eventEntryForm(e) {
     const ev = e.ev || null, plan = e.plan || null;
     const name = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: e.title || "", "aria-label": "What it is" });
-    const date = el("input", { class: "ad-in", type: "date", value: e.date || "", "aria-label": "Date" });
+    const date = dateField({ value: e.date || "", label: "Date", none: true });
     const sub = el("input", { class: "ad-in wide", type: "text", maxlength: "160", value: ev ? ev.sub || "" : e.sub || "", placeholder: "A line about it (optional)", "aria-label": "Details" });
     const locked = el("input", { type: "checkbox", checked: ev ? ev.locked === true : e.state === "confirmed" || e.state === "past" });
     const msg = el("span", { class: "ad-msg" });
@@ -2184,7 +2258,7 @@
     let kind = "event";
     const pick = el("div", { class: "filters" });
     const title = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "Event, e.g. Cookie order run", "aria-label": "What it is" });
-    const date = el("input", { class: "ad-in", type: "date", value: day, "aria-label": "Date" });
+    const date = dateField({ value: day, label: "Date", mode: "any" });
     const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Whose job" }));
     who.value = SESSION && PEOPLE[SESSION.personKey] ? SESSION.personKey : "team";
     const locked = el("input", { type: "checkbox", checked: true });
@@ -2467,7 +2541,7 @@
     const title = el("input", { class: "ad-in wide", type: "text", maxlength: "160", value: t.title, "aria-label": "What the job is" });
     const who = peopleOptions(el("select", { class: "ad-in", "aria-label": "Whose job" }));
     who.value = t.who;
-    const due = el("input", { class: "ad-in", type: "date", value: t.due || "", "aria-label": "Due date" });
+    const due = dateField({ value: t.due || "", label: "Due date", none: true });
     const note = el("textarea", { class: "an-text", rows: "2", maxlength: "600", placeholder: "Note: where it's at, what's in the way", "aria-label": "Note" });
     note.value = t.note || "";
     const msg = el("span", { class: "ad-msg" });
@@ -2495,7 +2569,7 @@
       }
     });
 
-    [title, due].forEach((i) => i.addEventListener("keydown", (e) => {
+    [title].forEach((i) => i.addEventListener("keydown", (e) => {   // not the date: Enter there picks a date
       if (e.key === "Enter") save.click();
       if (e.key === "Escape") close();
     }));
@@ -2539,9 +2613,9 @@
       .filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || ""))
       .forEach((k) => who.appendChild(el("option", { value: k, text: PEOPLE[k].name })));
 
-    const title = el("input", { class: "ad-in wide", type: "text", placeholder: "What needs doing", "aria-label": "Task" });
-    const due   = el("input", { class: "ad-in", type: "date", "aria-label": "Due date" });
-    const note  = el("input", { class: "ad-in wide", type: "text", placeholder: "Note (optional)", "aria-label": "Note" });
+    const title = el("input", { class: "ad-in wide", type: "text", placeholder: "e.g. Print the price signs", "aria-label": "What needs doing" });
+    const due   = dateField({ label: "Due date", none: true });
+    const note  = el("input", { class: "ad-in wide", type: "text", placeholder: "Optional: where to start, who to ask", "aria-label": "Note" });
     const msg   = el("span", { class: "ad-msg" });
 
     const go = el("button", { class: "au-go", text: "Give out this job",
@@ -2558,7 +2632,8 @@
             text: "Gave " + (PEOPLE[who.value] ? PEOPLE[who.value].name : who.value) + " a job: **"
               + title.value.trim() + "**" + (due.value ? ", due " + pretty(due.value) : "") });
           title.value = ""; note.value = ""; due.value = "";
-          msg.textContent = "Added. It is on their Tasks tab now.";
+          msg.textContent = "Added \u2014 it\u2019s on their Tasks tab now.";
+          title.focus();
         } catch (err) {
           msg.textContent = "Did not save. " + (err.code || err.message);
           msg.classList.add("bad");
@@ -2567,11 +2642,13 @@
       }
     });
 
+    const field = (label, control) => el("div", { class: "nj-f" }, [el("span", { class: "nj-l", text: label }), control]);
     box.append(
-      el("h3", { class: "grp", text: "New job" }),
-      el("div", { class: "adrow" }, [who, title]),
-      el("div", { class: "adrow" }, [due, note]),
-      el("div", { class: "adrow" }, [go, msg])
+      el("h3", { class: "nj-title", text: "New job" }),
+      el("div", { class: "nj-row" }, [field("For", who), field("What needs doing", title)]),
+      field("Due", due),
+      field("Note", note),
+      el("div", { class: "nj-foot" }, [go, msg])
     );
   }
 
@@ -3408,7 +3485,7 @@
     payer.addEventListener("change", syncOwed);
 
     /* --- the rest, folded away --- */
-    const date = el("input", { class: "mf-in", type: "date", value: today, "aria-label": "Date" });
+    const date = dateField({ value: today, label: "Date", mode: "past" });
     const lineList = el("datalist", { id: "budget-lines" });
     const line = el("input", { class: "mf-in", type: "text", list: "budget-lines", placeholder: "e.g. Halloween sale", "aria-label": "Which event" });
     const method = el("select", { class: "mf-in", "aria-label": "How it was paid" });
@@ -3952,7 +4029,7 @@
     const ask = el("input", { class: "ad-in wide", type: "text", maxlength: "160", placeholder: "What we\u2019d ask for, e.g. lend a freezer + 500k", "aria-label": "Ask" });
     const owner = peopleOptions(el("select", { class: "ad-in", "aria-label": "Who chases it" }));
     owner.value = SESSION.personKey;
-    const next = el("input", { class: "ad-in", type: "date", "aria-label": "Follow up on", title: "Follow up on" });
+    const next = dateField({ label: "Follow up on", none: true });
     const msg = el("span", { class: "ad-msg" });
     const go = el("button", { class: "au-go", type: "button", text: "Add to the list", onclick: async () => {
       if (!name.value.trim()) { msg.textContent = "Who is it?"; msg.classList.add("bad"); name.focus(); return; }
@@ -3979,7 +4056,7 @@
       save({ stage: stage.value });
       if (stage.value === "agreed") logActivity({ who: SESSION.personKey, event: "sponsor", key: true, text: "**" + x.name + "** agreed to support Ch\u1ea1m" });
     });
-    const next = el("input", { class: "ad-in", type: "date", value: x.next || "", "aria-label": "Follow up on" });
+    const next = dateField({ value: x.next || "", label: "Follow up on", none: true });
     next.addEventListener("change", () => save({ next: next.value || null }));
     const late = x.stage !== "agreed" && x.stage !== "no" && x.next && x.next < TODAY;
     const amount = el("input", { class: "ad-in sp-amt", type: "text", inputmode: "numeric", placeholder: "Pledged, e.g. 2tr", value: x.amount ? fmtVnd(x.amount) : "", "aria-label": "Pledged amount" });
@@ -4076,7 +4153,7 @@
 
   function openMeeting(m) {
     const host = $("mt-form");
-    const date = el("input", { class: "ad-in", type: "date", value: m ? m.date : TODAY, "aria-label": "Date" });
+    const date = dateField({ value: m ? m.date : TODAY, label: "Date", mode: "any" });
     const title = el("input", { class: "ad-in wide", type: "text", maxlength: "80", value: m ? m.title : "Team meeting", "aria-label": "Title" });
     const chosen = new Set(m ? m.people : []);
     const who = el("div", { class: "filters mt-people" }, Object.keys(PEOPLE).filter((k) => k !== "team" && !/^Left /.test(PEOPLE[k].role || "")).map((k) => {
@@ -4091,7 +4168,7 @@
       const t = el("input", { class: "ad-in wide mt-t", type: "text", maxlength: "160", placeholder: "Decision or action", "aria-label": "Decision", value: d ? d.text : "" });
       const w = peopleOptions(el("select", { class: "ad-in mt-w", "aria-label": "Who" }, [el("option", { value: "", text: "Nobody" })]));
       w.value = d && d.who ? d.who : "";
-      const due = el("input", { class: "ad-in mt-d", type: "date", "aria-label": "By when", value: d && d.due ? d.due : "" });
+      const due = dateField({ value: d && d.due ? d.due : "", label: "By when", none: true });
       const row = el("div", { class: "sf-item mt-row" }, [t, w, due]);
       row._taskId = d ? d.taskId || null : null;
       decs.appendChild(row);
@@ -4168,7 +4245,7 @@
 
     const add = admin ? (() => {
       const nm = el("input", { class: "ad-in wide", type: "text", maxlength: "60", placeholder: "Activity, e.g. Halloween sale", "aria-label": "Activity" });
-      const dt = el("input", { class: "ad-in", type: "date", "aria-label": "Date" });
+      const dt = dateField({ label: "Date", mode: "any" });
       const ty = el("select", { class: "ad-in", "aria-label": "Type" }, [el("option", { value: "fundraiser", text: "Fundraiser" }), el("option", { value: "program", text: "Program" })]);
       const kids = el("input", { class: "ad-in", type: "number", min: "0", placeholder: "Kids (programs)", "aria-label": "Kids reached" });
       const go = el("button", { class: "act", type: "button", text: "Add",
@@ -4228,7 +4305,7 @@
 
   function saleForm() {
     const name = el("input", { class: "ad-in wide", type: "text", maxlength: "60", placeholder: "Sale name, e.g. Ice cream sale", "aria-label": "Sale name" });
-    const date = el("input", { class: "ad-in", type: "date", "aria-label": "Sale day" });
+    const date = dateField({ label: "Sale day", none: true });
     const pickup = el("input", { class: "ad-in wide", type: "text", maxlength: "80", placeholder: "Pickup, e.g. Break time, outside the canteen", "aria-label": "Pickup" });
     const note = el("input", { class: "ad-in wide", type: "text", maxlength: "200", placeholder: "Note for buyers (optional), e.g. transfer to \u2026", "aria-label": "Note for buyers" });
     const allergens = el("input", { class: "ad-in wide", type: "text", maxlength: "120", placeholder: "Allergens, e.g. wheat, dairy, egg (food sales)", "aria-label": "Allergens" });
