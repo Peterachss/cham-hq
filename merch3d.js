@@ -12,7 +12,7 @@
   "use strict";
 
   const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js";
-  const ATLAS_URL = "merch3d.webp?v=85";
+  const ATLAS_URL = "merch3d.webp?v=86";
   let threeP = null, atlasP = null;
   const loadThree = () => threeP || (threeP = import(THREE_URL));
   const loadAtlas = () => atlasP || (atlasP = new Promise((resolve, reject) => {
