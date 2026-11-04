@@ -12,7 +12,7 @@
   "use strict";
 
   const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js";
-  const ATLAS_URL = "merch3d.webp?v=84";
+  const ATLAS_URL = "merch3d.webp?v=85";
   let threeP = null, atlasP = null;
   const loadThree = () => threeP || (threeP = import(THREE_URL));
   const loadAtlas = () => atlasP || (atlasP = new Promise((resolve, reject) => {
@@ -153,7 +153,7 @@
     }
 
     // Base cushion depth + subtle 3D creases for sleeves, hood, collar and cuffs
-    const R = 30, DEPTH = 21, CURVE = 13;
+    const R = 16, DEPTH = 6, CURVE = 10;   // a gentle drape, not a cushion: thin at the edges, a soft curve across the body
     let baseZ = new Float32Array(GW * GH);
     for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
       const k = j * GW + i;
@@ -169,7 +169,7 @@
           const ds = Math.abs(Math.abs(ux) - seamX);
           if (ds < 0.09) {
             const w = 0.5 * (1 + Math.cos(Math.PI * ds / 0.09));
-            z *= 1 - 0.32 * w;
+            z *= 1 - 0.12 * w;
           }
         }
         // Subtle gather and step at the ribbed waistband
@@ -184,7 +184,7 @@
           const ds = Math.abs(Math.abs(ux) - seamX);
           if (ds < 0.08) {
             const w = 0.5 * (1 + Math.cos(Math.PI * ds / 0.08));
-            z *= 1 - 0.20 * w;
+            z *= 1 - 0.08 * w;
           }
         }
       }

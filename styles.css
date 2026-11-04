@@ -1445,7 +1445,7 @@
 }
 .sw[aria-pressed="true"] { outline: 2px solid var(--jade); outline-offset: 2px; }
 /* the 3D handprint set (merch3d.js) */
-.m3d-wall { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); margin-bottom: 22px; }
+.m3d-wall { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 420px)); margin-bottom: 22px; }   /* capped: the artwork is ~400px a side, so a bigger card only blurs it */
 .m3d-stage {
   position: relative; aspect-ratio: 1 / 1.05; overflow: hidden; cursor: grab; touch-action: pan-y; user-select: none;
   background: radial-gradient(ellipse at 50% 38%, #fdfbf6 0%, #f1ede2 62%, #e6e0d2 100%);
