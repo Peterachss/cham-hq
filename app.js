@@ -3457,7 +3457,8 @@
     const amount = el("input", { class: "mf-in mf-amount", type: "text", inputmode: "decimal",
       placeholder: "250k", "aria-label": "Amount in dong", autocomplete: "off" });
     const amountSeen = el("div", { class: "mf-seen", "aria-live": "polite" });
-    const desc = el("input", { class: "mf-in", type: "text", placeholder: "What was it for?", "aria-label": "What it was for" });
+    const desc = el("input", { class: "mf-in", type: "text", placeholder: "e.g. Keychain rings", "aria-label": "What it was for" });
+    const descLabel = el("span", { class: "mf-k", text: "What was it for?" });
     const cat = el("select", { class: "mf-in", "aria-label": "Category" });
     const fillCats = () => {
       const keep = cat.value;
@@ -3494,7 +3495,7 @@
     const receipt = el("input", { class: "mf-in mf-file", type: "file", accept: "image/*", "aria-label": "Receipt photo" });
     const field = (label, input) => el("label", { class: "mf-field" }, [el("span", { class: "mf-k", text: label }), input]);
     const more = el("details", { class: "mf-more" }, [
-      el("summary", { text: "More details \u2014 date, event, how it was paid, receipt" }),
+      el("summary", { text: "More: date, how it was paid, receipt, notes" }),
       el("div", { class: "mf-grid2" }, [
         field("Date", date), field("Which event", line),
         field("Paid with", method), field("Receipt photo", receipt),
@@ -3520,7 +3521,8 @@
       segIn.setAttribute("aria-pressed", String(k === "in"));
       box.classList.toggle("is-in", k === "in");
       payerLabel.textContent = k === "out" ? "Paid by" : "Received by";
-      desc.placeholder = k === "out" ? "What was it for?" : "Where did it come from?";
+      descLabel.textContent = k === "out" ? "What was it for?" : "Where did it come from?";
+      desc.placeholder = k === "out" ? "e.g. Keychain rings" : "e.g. Bake sale cash";
       fillCats();
       syncOwed();
     };
@@ -3573,7 +3575,7 @@
       const recent = [];
       (LEDGER || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""))
         .forEach((m) => { if (m.budgetLine && !recent.includes(m.budgetLine) && m.category !== "Teaching") recent.push(m.budgetLine); });
-      chips.replaceChildren(el("span", { class: "mf-k", text: "For" }));
+      chips.replaceChildren(el("span", { class: "mf-k", text: "For which fundraiser" }));
       recent.slice(0, 4).forEach((name) => chips.appendChild(el("button", {
         class: "chipbtn plain", type: "button", "data-name": name, "aria-pressed": String(line.value === name), text: name,
         onclick: () => pickLine(line.value === name ? "" : name)
@@ -3583,20 +3585,22 @@
     line.addEventListener("input", () => chips.querySelectorAll("button")
       .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.name === line.value))));
 
-    box.classList.add("mform");
+    box.classList.add("mform", "mform2");
     box.append(
-      el("div", { class: "mf-head" }, [el("h3", { class: "grp", text: "Log money" }), seg]),
-      el("div", { class: "mf-main" }, [
-        el("div", { class: "mf-amtwrap" }, [
+      el("div", { class: "mf-head" }, [el("h3", { class: "mf-title", text: "Log money" }), seg]),
+      el("div", { class: "mf-hero" }, [
+        el("label", { class: "mf-amtwrap" }, [
           el("span", { class: "mf-cur", "aria-hidden": "true", text: "\u20ab" }), amount
         ]),
-        desc, cat
+        amountSeen
       ]),
+      el("label", { class: "mf-field" }, [descLabel, desc]),
+      el("div", { class: "mf-pair" }, [
+        el("label", { class: "mf-field" }, [el("span", { class: "mf-k", text: "Category" }), cat]),
+        el("label", { class: "mf-field" }, [payerLabel, payer])
+      ]),
+      owedLabel,
       chips,
-      el("div", { class: "mf-sub" }, [
-        amountSeen,
-        el("span", { class: "mf-who" }, [payerLabel, payer, owedLabel])
-      ]),
       more,
       el("div", { class: "mf-foot" }, [msg, go])
     );

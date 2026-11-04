@@ -1668,3 +1668,32 @@ input[type="file"]::file-selector-button:hover { border-color: var(--jade); back
 #admin-panel .nj-f > * { flex: none; }   /* the inputs' row-sizing must not stretch them tall in a column */
 #admin-panel .nj-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 @media (max-width: 600px) { #admin-panel .nj-row { grid-template-columns: 1fr; gap: 0; } }
+
+/* Log money, laid out like a money app: the amount first and big, labelled rows, one full-width button */
+.mform2 { display: flex; flex-direction: column; gap: 16px; }
+.mform2 .mf-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding-right: 40px; }
+.mform2 .mf-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--ink); }
+.mform2 .mf-hero { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+.mform2 .mf-amtwrap { display: flex; align-items: baseline; justify-content: center; gap: 6px; width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
+.mform2 .mf-cur { font-size: 28px; font-weight: 500; color: var(--muted); }
+.mform2 .mf-amount { font-size: 40px; font-weight: 600; letter-spacing: -.02em; text-align: left; width: 5ch; field-sizing: content; min-width: 3ch; max-width: 100%; border: 0; background: none; padding: 0; color: var(--ink); outline: none; }   /* the ₫ stays beside the number */
+.mform2 .mf-amount::placeholder { color: var(--line); }
+.mform2 .mf-hero:focus-within { border-color: var(--jade); }
+.mform2 .mf-seen { font-size: 13px; color: var(--muted); min-height: 18px; }
+.mform2 .mf-field { display: flex; flex-direction: column; gap: 7px; margin: 0; min-width: 0; }
+.mform2 .mf-field > .mf-in, .mform2 .mf-field > select { width: 100%; height: 42px; }
+.mform2 .mf-k { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.mform2 .mf-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mform2 .mf-check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); margin-top: -6px; }
+.mform2 .mf-check input { width: 18px; height: 18px; accent-color: var(--jade); }
+.mform2 .mf-chips:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mform2 .mf-chips .mf-k { flex-basis: 100%; }
+.mform2 .mf-more summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+.mform2 .mf-more[open] summary { margin-bottom: 12px; color: var(--ink-2); }
+.mform2 .mf-foot { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.mform2 .mf-go { width: 100%; height: 48px; font-size: 16px; }
+.mform2 .mf-msg:empty { display: none; }
+@media (max-width: 480px) { .mform2 .mf-pair { grid-template-columns: 1fr; } .mform2 .mf-amount { font-size: 34px; } }
+.mform2 .mf-amtwrap .mf-amount { flex: 0 1 auto; }
+.mform2 .mf-amtwrap { flex: none; }
+.mform2 .mf-cur { position: static; transform: none; }
