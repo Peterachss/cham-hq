@@ -3262,11 +3262,13 @@
 
     if (!rows.length) {
       grid.appendChild(el("div", { class: "empty-state", text: MERCH ? "No designs yet. Add the first one above." : "Loading the designs…" }));
+      if (window.ChamMerch3D && (S.merchGroup === "all" || S.merchGroup === "canva")) grid.prepend(window.ChamMerch3D.section());
       MERCH_SHOWN = [];
       return;
     }
     MERCH_SHOWN = [];
     MERCH_GROUPS.forEach(([k, label, about]) => {
+      if (k === MERCH_GROUPS[0][0] && window.ChamMerch3D && (S.merchGroup === "all" || S.merchGroup === "canva")) grid.appendChild(window.ChamMerch3D.section());   // the handprint set in 3D, above the pictures (merch3d.js)
       if (S.merchGroup !== "all" && S.merchGroup !== k) return;
       const items = rows.filter((m) => m.group === k);
       if (!items.length) return;

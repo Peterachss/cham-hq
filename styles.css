@@ -1444,6 +1444,18 @@
   border: 2px solid var(--line); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
 }
 .sw[aria-pressed="true"] { outline: 2px solid var(--jade); outline-offset: 2px; }
+/* the 3D handprint set (merch3d.js) */
+.m3d-wall { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); margin-bottom: 22px; }
+.m3d-stage {
+  position: relative; aspect-ratio: 1 / 1.05; overflow: hidden; cursor: grab; touch-action: pan-y; user-select: none;
+  background: radial-gradient(ellipse at 50% 38%, #fdfbf6 0%, #f1ede2 62%, #e6e0d2 100%);
+}
+.m3d-stage:active { cursor: grabbing; }
+.m3d-stage canvas { display: block; width: 100%; height: 100%; }
+.m3d-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; font-size: 13px; color: #7a7466; }
+.m3d-hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: #8a8475; pointer-events: none; }
+.m3d-sides { display: flex; gap: 6px; margin-left: auto; }
+.m3d-sides .chipbtn { padding: 3px 10px; font-size: 12px; }
 .merch-add summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
 .merch-add[open] summary { margin-bottom: 10px; }
 .merch-add .adrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }

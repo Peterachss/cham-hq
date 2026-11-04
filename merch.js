@@ -215,5 +215,8 @@
     document.head.appendChild(l);
   }
 
-  window.ChamMerch = { IDEAS, SHIRTS, mockupSVG, shirtVars, loadFonts };
+  /* the bare garment outlines and the little clothesline clothes, for the 3D view (merch3d.js) */
+  const garment = (kind, side) => GARMENTS[kind].draw(side);
+
+  window.ChamMerch = { IDEAS, SHIRTS, mockupSVG, shirtVars, loadFonts, garment, LITTLE };
 })();
