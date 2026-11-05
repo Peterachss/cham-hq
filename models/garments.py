@@ -26,7 +26,7 @@ import math
 import sys
 from pathlib import Path
 
-from build123d import (Compound, Edge, Location, Solid, Vector, Wire,
+from build123d import (Compound, Edge, Location, Plane, Solid, Vector, Wire,
                        export_gltf)
 
 try:  # the render skill's exporter, when run from inside the skill
@@ -35,8 +35,8 @@ except Exception:  # plain build123d export otherwise
     skill_render = None
 
 OUT = Path(__file__).resolve().parent
-TOL = 0.0006  # relative linear deflection: coarse enough for small files
-ANG = 0.28    # angular deflection (radians)
+TOL = 0.002   # relative linear deflection: coarse enough for small files
+ANG = 0.35    # angular deflection (radians)
 
 
 # ---------------------------------------------------------------- helpers
@@ -72,7 +72,19 @@ def ring(z, a, b, n=2.4, y=0.0, tilt=None):
 
 
 def loft(wires):
-    return Solid.make_loft(wires, ruled=False)
+    """Smooth loft through the sections (build123d's Solid.make_loft, with the
+    surface kept to degree 3 and centripetal spacing: the default high-degree
+    fit overshoots between unevenly spaced sections and bulges the hem)."""
+    from OCP.Approx import Approx_ParametrizationType
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+    b = BRepOffsetAPI_ThruSections(True, False, 1e-6)
+    b.SetMaxDegree(3)
+    b.SetParType(Approx_ParametrizationType.Approx_Centripetal)
+    b.CheckCompatibility(False)
+    for w in wires:
+        b.AddWire(w.wrapped)
+    b.Build()
+    return Solid(b.Shape())
 
 
 def bezier(p0, p1, p2, t):
@@ -135,7 +147,79 @@ def export(name, parts):
     else:
         export_gltf(comp, str(OUT / f"{name}.glb"), binary=True,
                     linear_deflection=TOL, angular_deflection=ANG)
+    slim(OUT / f"{name}.glb")
     print(name, (OUT / f"{name}.glb").stat().st_size // 1024, "KB")
+
+
+def slim(path):
+    """Shrink the exported .glb: one primitive per part, positions + normals
+    only (no CAD texture coordinates or materials), 16-bit indices where they fit."""
+    import json
+    import struct
+    import numpy as np
+    raw = path.read_bytes()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    j = json.loads(raw[20:20 + jlen])
+    blen = struct.unpack("<I", raw[20 + jlen:24 + jlen])[0]
+    bin_ = raw[28 + jlen:28 + jlen + blen]
+    ctype = {5121: np.uint8, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
+    ncomp = {"SCALAR": 1, "VEC2": 2, "VEC3": 3}
+
+    def read(i):
+        a = j["accessors"][i]
+        bv = j["bufferViews"][a["bufferView"]]
+        dt = np.dtype(ctype[a["componentType"]])
+        n = ncomp[a["type"]]
+        off = bv.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = bv.get("byteStride", dt.itemsize * n)
+        arr = np.frombuffer(bin_, dtype=np.uint8, count=stride * a["count"], offset=off)
+        arr = arr.reshape(a["count"], stride)[:, :dt.itemsize * n].copy().view(dt)
+        return arr.reshape(a["count"], n)
+
+    out = bytearray()
+    views, accs, meshes = [], [], []
+
+    def add(arr, target, kind, minmax=False):
+        while len(out) % 4:
+            out.append(0)
+        views.append({"buffer": 0, "byteOffset": len(out), "byteLength": arr.nbytes, "target": target})
+        out.extend(arr.tobytes())
+        comp = {np.float32: 5126, np.uint16: 5123, np.uint32: 5125}[arr.dtype.type]
+        acc = {"bufferView": len(views) - 1, "componentType": comp,
+               "count": int(arr.shape[0]) if arr.ndim > 1 else int(arr.size), "type": kind}
+        if minmax:
+            acc["min"] = arr.min(axis=0).tolist()
+            acc["max"] = arr.max(axis=0).tolist()
+        accs.append(acc)
+        return len(accs) - 1
+
+    for m in j["meshes"]:
+        P, N, I, base = [], [], [], 0
+        for p in m["primitives"]:
+            pos = read(p["attributes"]["POSITION"]).astype(np.float32)
+            nrm = read(p["attributes"]["NORMAL"]).astype(np.float32)
+            idx = read(p["indices"]).astype(np.uint32).ravel()
+            P.append(pos); N.append(nrm); I.append(idx + base)
+            base += len(pos)
+        P = np.concatenate(P); N = np.concatenate(N); I = np.concatenate(I)
+        I = I.astype(np.uint16 if base < 65536 else np.uint32)
+        pa = add(P, 34962, "VEC3", True)
+        na = add(N, 34962, "VEC3")
+        ia = add(I, 34963, "SCALAR")
+        meshes.append({"name": m.get("name"), "primitives": [
+            {"attributes": {"POSITION": pa, "NORMAL": na}, "indices": ia}]})
+    nodes = [{k: v for k, v in n.items() if k in ("name", "mesh", "children", "rotation",
+                                                  "translation", "scale", "matrix")} for n in j["nodes"]]
+    g = {"asset": {"version": "2.0", "generator": "build123d + models/garments.py"},
+         "scene": 0, "scenes": j["scenes"], "nodes": nodes, "meshes": meshes,
+         "accessors": accs, "bufferViews": views, "buffers": [{"byteLength": len(out)}]}
+    js = json.dumps(g, separators=(",", ":")).encode()
+    js += b" " * (-len(js) % 4)
+    out.extend(b"\0" * (-len(out) % 4))
+    glb = struct.pack("<III", 0x46546C67, 2, 28 + len(js) + len(out))
+    glb += struct.pack("<II", len(js), 0x4E4F534A) + js
+    glb += struct.pack("<II", len(out), 0x004E4942) + bytes(out)
+    path.write_bytes(glb)
 
 
 # ---------------------------------------------------------------- hoodie
@@ -169,11 +253,11 @@ def hoodie():
 
     # Sleeves: drop shoulder seam at the body's edge, hanging a little forward
     # and away from the body; ~60 cm from the shoulder seam to the cuff end.
-    p0, p1, p2 = V(215, 0, 590), V(345, -6, 560), V(390, -34, 118)
+    p0, p1, p2 = V(200, 0, 556), V(335, -6, 528), V(390, -34, 118)
     sleeve = tube(p0, p1, p2, [
-        (0.00, 140, 98),
-        (0.12, 128, 92),
-        (0.30, 96, 84),
+        (0.00, 116, 92),
+        (0.12, 110, 90),
+        (0.30, 93, 84),
         (0.55, 82, 76),
         (0.80, 72, 68),
         (0.93, 64, 60),
@@ -198,13 +282,13 @@ def hoodie():
     cuff = cuff - hole
 
     # Hood: sits up behind the neck, opening facing forward and a little up
-    outer = ellipsoid(0, 34, H + 70, 128, 150, 205)
-    inner = ellipsoid(0, 12, H + 92, 106, 128, 182)
-    cut = Solid.make_box(600, 600, 600, Plane.XY).rotate(
-        __import__("build123d").Axis.X, -24).move(Location((-300, -590, H - 90)))
+    outer = ellipsoid(0, 40, H + 22, 150, 158, 182)
+    inner = ellipsoid(0, 16, H + 40, 129, 140, 163)
+    face_dir = V(0, -math.cos(math.radians(35)), math.sin(math.radians(35)))   # forward and a little up
+    opening = Plane(origin=V(0, -22, H + 10), x_dir=V(1, 0, 0), z_dir=face_dir)
+    cut = Solid.make_box(1000, 1000, 600, opening.move(Location((-500, -500, 0))))
+    # its lower part sinks into the shoulders and drapes onto the upper back
     hood = (outer - inner) - cut
-    # keep the hood off the front of the chest: only above the shoulders
-    hood = hood & Solid.make_box(600, 600, 600, Plane.XY.offset(H - 70).move(Location((-300, -300, 0))))
 
     parts = [
         ("body", body + pocket),
@@ -221,6 +305,7 @@ def hoodie():
 # ---------------------------------------------------------------- tee
 def tee():
     H = 720.0
+    NZ = 680.0  # neckline height at the middle; back of the neck ~H, front ~8 cm lower
     # The neckline is tilted: the back of the neck sits higher than the front.
     def neck_tilt(k, z0):
         return lambda p: V(p.X, p.Y, z0 + k * p.Y)
@@ -232,34 +317,26 @@ def tee():
         ring(500, 265, 133, 2.7),
         ring(600, 254, 128, 2.6),
         ring(655, 228, 118, 2.4),
-        ring(690, 180, 104, 2.2, tilt=neck_tilt(0.10, 690)),
-        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 102, 86, 2.0, tilt=neck_tilt(0.42, 694)),
+        ring(678, 182, 104, 2.2, tilt=neck_tilt(0.12, 678)),
+        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 102, 86, 2.0, tilt=neck_tilt(0.42, NZ)),
     ])
     # Open hem: a shallow hollow up into the body so the bottom reads as fabric
     hem_hole = loft([ring(-5, 252, 118, 2.6), ring(60, 246, 112, 2.6), ring(120, 225, 100, 2.4)])
     body = body - hem_hole
 
     # Neck opening and the ribbed crew collar on its rim
-    nk = neck_tilt(0.42, 694)
     neck_hole = loft([
-        section(V(0, 6, -90), V(1, 0, 0), V(0, 1, 0), 82, 68, 2.0, tilt=neck_tilt(0.42, 694 - 90)),
-        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 88, 73, 2.0, tilt=neck_tilt(0.42, 694 + 2)),
-        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 92, 77, 2.0, tilt=neck_tilt(0.42, 694 + 40)),
+        section(V(0, 6, -90), V(1, 0, 0), V(0, 1, 0), 82, 68, 2.0, tilt=neck_tilt(0.42, NZ - 90)),
+        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 88, 73, 2.0, tilt=neck_tilt(0.42, NZ + 2)),
+        section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), 92, 77, 2.0, tilt=neck_tilt(0.42, NZ + 40)),
     ])
     body = body - neck_hole
-    # collar: a rounded rib band swept round the neckline
-    pts = []
-    for i in range(40):
-        t = 2 * math.pi * i / 40
-        pts.append(nk(V(96 * math.cos(t), 6 + 81 * math.sin(t), 0)))
-    path = Wire([Edge.make_spline(pts, periodic=True)])
-    start = pts[0]
-    tang = norm(path.tangent_at(0))
-    radial = norm(V(start.X, start.Y - 6, 0))
-    from build123d import Plane
-    up = norm(tang.cross(radial))
-    prof = section(start + up * 3, radial, up, 9, 13, 2.6, N=16)
-    collar = Solid.sweep(prof, path, transition=__import__("build123d").Transition.ROUND)
+    # collar: a ~2 cm rib band standing on the neckline rim
+    def neck_ring(a, b, dz):
+        return section(V(0, 6, 0), V(1, 0, 0), V(0, 1, 0), a, b, 2.0,
+                       tilt=neck_tilt(0.42, NZ + dz))
+    collar = loft([neck_ring(104, 89, -8), neck_ring(106, 91, 3), neck_ring(103, 88, 12)])
+    collar = collar - loft([neck_ring(86, 71, -30), neck_ring(87, 72, 0), neck_ring(89, 74, 30)])
 
     # Short sleeves, angled down ~30 degrees from the shoulder
     ang = math.radians(32)
