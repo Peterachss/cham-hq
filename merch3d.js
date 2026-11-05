@@ -16,10 +16,11 @@
   const CDN = "https://cdn.jsdelivr.net/npm/three@0.170.0";
   const THREE_URL = CDN + "/+esm";
   const GLTF_URL = CDN + "/examples/jsm/loaders/GLTFLoader.js/+esm";
-  const ATLAS_URL = "merch3d.webp?v=87";
+  const ROOM_URL = CDN + "/examples/jsm/environments/RoomEnvironment.js/+esm";
+  const ATLAS_URL = "merch3d.webp?v=88";
   let threeP = null, atlasP = null;
-  const loadThree = () => threeP || (threeP = Promise.all([import(THREE_URL), import(GLTF_URL)])
-    .then(([THREE, G]) => ({ THREE, GLTFLoader: G.GLTFLoader })));
+  const loadThree = () => threeP || (threeP = Promise.all([import(THREE_URL), import(GLTF_URL), import(ROOM_URL)])
+    .then(([THREE, G, R]) => ({ THREE, GLTFLoader: G.GLTFLoader, RoomEnvironment: R.RoomEnvironment })));
   const loadAtlas = () => atlasP || (atlasP = new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -44,24 +45,22 @@
      it from behind. Sleeve prints are placed on the sleeves themselves. */
   const PIECES = [
     {
-      kind: "hoodie", title: "Hoodie", model: "models/hoodie.glb?v=87",
+      kind: "hoodie", title: "Hoodie", model: "models/hoodie.glb?v=88",
       yFront: 0, yBack: 448, tileH: 448,
       colours: ["cream", "navy", "forest", "pink", "charcoal", "blue"],
-      ribs: { hem: 130, cuff_l: 26, cuff_r: 26 },
-      inside: { hood: [1, 1, 1], body: [1, 0, 1] },
+      ribs: { hem: 200, cuff_l: 36, cuff_r: 36 },
       front: [
         { mm: 2.2, at: [200, 246], to: [0, 360], src: [[108, 121, 55, 55], [234, 109, 61, 57], [99, 210, 202, 70]] }
       ],
       back: [
-        { mm: 2.1, at: [200, 365], to: [0, 112], src: [[98, 112, 202, 236], [126, 350, 148, 30]] }
+        { mm: 2.0, at: [200, 365], to: [0, 104], src: [[98, 112, 202, 236], [126, 350, 148, 30]] }
       ]
     },
     {
-      kind: "tee", title: "T-shirt", model: "models/tee.glb?v=87",
+      kind: "tee", title: "T-shirt", model: "models/tee.glb?v=88",
       yFront: 896, yBack: 1284, tileH: 388,
       colours: ["white", "navy", "forest", "pink", "charcoal", "blue"],
-      ribs: { collar: 56 },
-      inside: { body: [1, 0, 1] },
+      ribs: { collar: 90 },
       front: [
         { mm: 2.2, at: [200, 102], to: [0, 540], src: [[102, 74, 58, 56], [228, 70, 70, 69], [94, 164, 210, 66]] },
         // ribbons, wearer's right sleeve (the charcoal sheet has none drawn, so it borrows navy's)
@@ -123,24 +122,25 @@
 
   /* The garment material: plain fabric in the colourway's colour, with the
      front print layer projected onto front-facing surfaces and the back
-     layer onto back-facing ones. Ribbed parts get fine vertical ribs, and
-     the inside of the hood and of the openings is a little shadier. */
-  function fabric(THREE, U, rib, inside) {
-    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.93, metalness: 0 });
+     layer onto back-facing ones. The soft shadows in the creases are baked
+     into the model (vertex colours); knit-ribbed parts (cuffs, hem band,
+     collar) get fine vertical ribs in the shading. */
+  function fabric(THREE, U, rib) {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0, vertexColors: true, envMapIntensity: 0.3 });
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, U, {
-        uRib: { value: rib ? rib.n : 0 }, uRibC: { value: rib ? rib.c : new THREE.Vector3() },
-        uInC: { value: inside ? inside.c : new THREE.Vector3() }, uInM: { value: inside ? inside.m : new THREE.Vector3() }
+        uRib: { value: rib ? rib.n : 0 }, uRibC: { value: rib ? rib.c : new THREE.Vector3() }
       });
       sh.vertexShader = sh.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying vec3 vPP;\nvarying vec3 vPN;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPP = position;\nvPN = normal;");
+        .replace("#include <common>", "#include <common>\nvarying vec3 vPP;\nvarying vec3 vPN;\nvarying vec3 vRibT;\nuniform vec3 uRibC;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPP = position;\nvPN = normal;\n" +
+          "vRibT = normalMatrix * normalize(vec3(-(position.z - uRibC.z), 0.0, position.x - uRibC.x) + 1e-5);");
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", [
           "#include <common>",
           "uniform sampler2D tFront; uniform sampler2D tBack; uniform vec4 uBox;",
-          "uniform float uRib; uniform vec3 uRibC; uniform vec3 uInC; uniform vec3 uInM;",
-          "varying vec3 vPP; varying vec3 vPN;"
+          "uniform float uRib; uniform vec3 uRibC;",
+          "varying vec3 vPP; varying vec3 vPN; varying vec3 vRibT;"
         ].join("\n"))
         .replace("#include <map_fragment>", [
           "#include <map_fragment>",
@@ -154,12 +154,17 @@
           "  diffuseColor.rgb = mix(diffuseColor.rgb, pf.rgb, pf.a * wf);",
           "  diffuseColor.rgb = mix(diffuseColor.rgb, pb.rgb, pb.a * wb);",
           "}",
+          "float ribW = 0.0, ribS = 0.0;",
           "if (uRib > 0.0) {",
-          "  float ra = atan(vPP.z - uRibC.z, vPP.x - uRibC.x);",
-          "  diffuseColor.rgb *= 0.94 + 0.06 * cos(ra * uRib);",
-          "}",
-          "vec3 inR = (vPP - uInC) * uInM;",
-          "if (dot(inR, inR) > 1.0) diffuseColor.rgb *= 1.0 - 0.38 * smoothstep(-0.15, -0.55, dot(pn, normalize(inR)));"
+          "  float ra = atan(vPP.z - uRibC.z, vPP.x - uRibC.x) * uRib;",
+          "  ribW = 1.0 - smoothstep(0.9, 2.2, fwidth(ra));",
+          "  ribS = sin(ra);",
+          "  diffuseColor.rgb *= 1.0 - 0.05 * ribW * (0.5 + 0.5 * cos(ra));",
+          "}"
+        ].join("\n"))
+        .replace("#include <normal_fragment_maps>", [
+          "#include <normal_fragment_maps>",
+          "if (ribW > 0.0) normal = normalize(normal + normalize(vRibT) * 0.5 * ribW * ribS);"
         ].join("\n"));
     };
     return m;
@@ -187,22 +192,30 @@
     hint.textContent = "Drag to turn it";
     stage.append(msg, hint);
 
-    const state = { colour: piece.colours[0], rotY: -0.38, rotX: 0.05, vel: 0, target: null, idleAt: 0, dragging: false };
+    const state = { colour: piece.colours[0], rotY: -0.38, rotX: 0.13, vel: 0, target: null, idleAt: 0, dragging: false };
     let api = null;
 
     async function start() {
-      const [{ THREE, GLTFLoader }, atlas] = await Promise.all([loadThree(), loadAtlas()]);
+      const [{ THREE, GLTFLoader, RoomEnvironment }, atlas] = await Promise.all([loadThree(), loadAtlas()]);
       const gltf = await new GLTFLoader().loadAsync(piece.model);
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.NeutralToneMapping;
+      // light colours get a little less exposure, so their folds don't wash out
+      const expose = (hex) => { const c = new THREE.Color(hex); renderer.toneMappingExposure = 0.95 - 0.3 * (0.3 * c.r + 0.6 * c.g + 0.1 * c.b); };
+      expose(COL[state.colour][1]);
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
       camera.position.set(0, 0.08, 11.2);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc8b8, 1.9));
-      const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(3, 4, 7); scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-5, 1, 4); scene.add(fill);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.9); rim.position.set(-4, 2, -6); scene.add(rim);
+      // soft studio light: a room-sized environment plus a key, fill and rim light
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xd6d0c2, 0.3));
+      const key = new THREE.DirectionalLight(0xffffff, 1.45); key.position.set(3, 4, 7); scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-5, 1, 4); scene.add(fill);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.6); rim.position.set(-4, 2, -6); scene.add(rim);
 
       const maxAniso = renderer.capabilities.getMaxAnisotropy();
       const layerTex = (colour, back) => {
@@ -218,24 +231,35 @@
         uBox: { value: new THREE.Vector4(BOX.x0, BOX.y0, BOX.w, BOX.h) }
       };
 
-      // The CAD model is in metres with Z up; bake it into millimetres, Y up.
+      // The CAD model is in metres with Z up, stored compressed; unpack it
+      // into plain millimetres, Y up, front facing the camera.
       const model = new THREE.Group();
-      const materials = [];
+      const fabrics = [], cords = [];
       const box = new THREE.Box3();
+      const unpack = (attr) => {
+        const a = new Float32Array(attr.count * attr.itemSize);
+        for (let i = 0; i < attr.count; i++) for (let c = 0; c < attr.itemSize; c++) a[i * attr.itemSize + c] = attr.getComponent(i, c);
+        return new THREE.BufferAttribute(a, attr.itemSize);
+      };
+      const cordColour = (hex) => new THREE.Color(hex).lerp(new THREE.Color("#d8d4cb"), 0.35);
       gltf.scene.updateMatrixWorld(true);
       gltf.scene.traverse((o) => {
         if (!o.isMesh) return;
-        const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+        const geo = o.geometry.clone();
+        ["position", "normal"].forEach((n) => geo.setAttribute(n, unpack(geo.getAttribute(n))));
+        geo.applyMatrix4(o.matrixWorld);
         geo.scale(1000, 1000, 1000);
         geo.computeBoundingBox();
         box.union(geo.boundingBox);
-        const ribN = piece.ribs[o.name];
-        const rib = ribN ? { n: ribN, c: geo.boundingBox.getCenter(new THREE.Vector3()) } : null;
-        const inM = piece.inside[o.name];
-        const inside = inM ? { c: geo.boundingBox.getCenter(new THREE.Vector3()), m: new THREE.Vector3(...inM) } : null;
-        const mat = fabric(THREE, U, rib, inside);
-        mat.color.set(COL[state.colour][1]);
-        materials.push(mat);
+        let mat;
+        if (o.name.startsWith("aglet")) {
+          mat = new THREE.MeshStandardMaterial({ color: 0x9a9890, roughness: 0.35, metalness: 0.85, vertexColors: true });
+        } else {
+          const ribN = piece.ribs[o.name];
+          mat = fabric(THREE, U, ribN ? { n: ribN, c: geo.boundingBox.getCenter(new THREE.Vector3()) } : null);
+          if (o.name.startsWith("cord")) { mat.color.copy(cordColour(COL[state.colour][1])); cords.push(mat); }
+          else { mat.color.set(COL[state.colour][1]); fabrics.push(mat); }
+        }
         model.add(new THREE.Mesh(geo, mat));
       });
       const size = box.getSize(new THREE.Vector3());
@@ -281,7 +305,7 @@
           state.rotY += state.vel;
           state.vel *= 0.92;
           if (Math.abs(state.vel) < 0.0005 && now > state.idleAt) state.rotY += dt * 0.35;
-          state.rotX += (0.05 - state.rotX) * Math.min(1, dt * 2);
+          state.rotX += (0.13 - state.rotX) * Math.min(1, dt * 2);   // seen from a little above, like a product photo
         }
         holder.rotation.set(state.rotX, state.rotY, 0);
         renderer.render(scene, camera);
@@ -294,7 +318,9 @@
 
       api = {
         recolour(colour) {
-          materials.forEach((m) => m.color.set(COL[colour][1]));
+          expose(COL[colour][1]);
+          fabrics.forEach((m) => m.color.set(COL[colour][1]));
+          cords.forEach((m) => m.color.copy(cordColour(COL[colour][1])));
           [["tFront", false], ["tBack", true]].forEach(([u, back]) => {
             const old = U[u].value;
             U[u].value = layerTex(colour, back);
